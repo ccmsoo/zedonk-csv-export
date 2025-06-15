@@ -31,7 +31,7 @@ export const loader = async ({ request, params }) => {
     }
 
     // 인증 없이 직접 GraphQL 클라이언트 생성
-    const { admin } = await unauthenticated.admin("cpnmmm-wb.myshopify.com");
+    const { admin, session } = await authenticate.admin(request);
 
     // GraphQL 쿼리로 주문 데이터 가져오기
     const response = await admin.graphql(
