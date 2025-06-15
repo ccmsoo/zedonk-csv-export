@@ -52,13 +52,24 @@ export const loader = async ({ request, params }) => {
       }
     );
 
-    const responseJson = await response.json();
+    // response.json()이 아니라 response 자체가 이미 JSON일 수 있음
+    let responseData;
     
-    if (!responseJson.data?.order) {
+    // Response 객체인지 확인
+    if (response && typeof response.json === 'function') {
+      responseData = await response.json();
+    } else {
+      // 이미 파싱된 데이터인 경우
+      responseData = response;
+    }
+    
+    // 데이터 구조 확인
+    const order = responseData?.data?.order || responseData?.order;
+    
+    if (!order) {
+      console.error("Order not found in response:", responseData);
       return json({ error: "Order not found" }, { status: 404 });
     }
-
-    const order = responseJson.data.order;
 
     // Zedonk CSV 형식으로 데이터 변환
     const csvRows = [];
@@ -103,9 +114,9 @@ export const loader = async ({ request, params }) => {
       csvRows.push([
         order.name,
         customerName,
-        '',  // Account Code - 필요시 고객 태그나 메타필드에서 가져올 수 있음
+        '',  // Account Code
         style,
-        '',  // Fabric - 제품 메타필드에서 가져올 수 있음
+        '',  // Fabric
         colour,
         size,
         item.variant?.barcode || '',
@@ -117,7 +128,6 @@ export const loader = async ({ request, params }) => {
     const csvContent = csvRows
       .map(row => row.map(cell => {
         const cellStr = String(cell || '');
-        // 특수 문자가 포함된 경우 따옴표로 감싸기
         if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
           return `"${cellStr.replace(/"/g, '""')}"`;
         }
@@ -137,17 +147,11 @@ export const loader = async ({ request, params }) => {
 
   } catch (error) {
     console.error("API Error:", error);
-    
-    // 인증 오류인 경우
-    if (error.message?.includes('authenticate')) {
-      return json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    console.error("Error type:", typeof error);
+    console.error("Error details:", error.message || error);
     
     return json(
-      { error: "Internal server error", details: error.message },
+      { error: "Internal server error", details: error.message || String(error) },
       { status: 500 }
     );
   }
