@@ -17,46 +17,40 @@ export default reactExtension(TARGET, () => <App />);
 function App() {
   const { data, close } = useApi(TARGET);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     setLoading(true);
+    setError(null);
     
     try {
       // 선택된 주문의 ID 가져오기
-      const orderId = data.selected[0]?.id || 'unknown';
+      const orderId = data.selected[0]?.id;
+      
+      if (!orderId) {
+        throw new Error('No order selected');
+      }
+
+      // GID에서 숫자 ID만 추출 (gid://shopify/Order/123456 -> 123456)
       const numericId = orderId.split('/').pop();
       
-      // 현재 시간
-      const now = new Date();
-      const timestamp = now.toISOString().split('T')[0];
+      // Vercel API 엔드포인트 호출
+      const apiUrl = `https://zedonk-csv-export.vercel.app/api/order/${numericId}`;
       
-      // CSV 데이터 생성
-      const csvContent = [
-        ['Order ID', 'Export Date', 'Status', 'Exported By'],
-        [numericId, timestamp, 'Exported', 'Zedonk CSV App']
-      ].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
-
-      // 다운로드 트리거
-      const blob = new Blob([csvContent], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = `order_${numericId}_export.csv`;
+      // fetch 대신 window.open 사용하여 직접 다운로드
+      const downloadWindow = window.open(apiUrl, '_blank');
       
-      document.body.appendChild(a);
-      a.click();
+      // 다운로드 시작 메시지
+      console.log(`Downloading CSV for order ${numericId} from ${apiUrl}`);
       
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      // 성공 후 모달 닫기
+      // 잠시 후 모달 닫기
       setTimeout(() => {
         close();
-      }, 500);
+      }, 2000);
 
-    } catch (error) {
-      console.error('Export error:', error);
+    } catch (err) {
+      console.error('Export failed:', err);
+      setError(err.message || 'Failed to export CSV');
     } finally {
       setLoading(false);
     }
@@ -68,22 +62,47 @@ function App() {
         <Button
           onPress={handleExport}
           loading={loading}
+          disabled={loading}
+          variant="primary"
         >
-          Export CSV
+          {loading ? 'Exporting...' : 'Export CSV'}
         </Button>
       }
-      secondaryAction={<Button onPress={() => close()}>Cancel</Button>}
+      secondaryAction={
+        <Button onPress={() => close()} variant="plain">
+          Cancel
+        </Button>
+      }
     >
       <BlockStack gap>
-        <Text variant="bodyLg" as="p">
-          Export order information to CSV?
+        <Text variant="headingMd" as="h2">
+          Export to Zedonk CSV Format
         </Text>
-        <Text variant="bodySm" as="p">
-          This will create a basic CSV file with the order ID and timestamp.
+        
+        <Text variant="bodyMd" as="p">
+          This will download the order data in Zedonk's CSV format with the following columns:
         </Text>
-        <Text variant="bodySm" as="p">
-          Note: Detailed order data requires server connection.
-        </Text>
+        
+        <BlockStack gap="extraTight">
+          <Text variant="bodySm" as="p" tone="subdued">
+            • Order Reference
+          </Text>
+          <Text variant="bodySm" as="p" tone="subdued">
+            • Customer Name
+          </Text>
+          <Text variant="bodySm" as="p" tone="subdued">
+            • Style, Colour, Size
+          </Text>
+          <Text variant="bodySm" as="p" tone="subdued">
+            • Barcode & Quantity
+          </Text>
+        </BlockStack>
+        
+        {error && (
+          <Text variant="bodySm" as="p" tone="critical">
+            Error: {error}
+          </Text>
+        )}
       </BlockStack>
     </AdminAction>
   );
