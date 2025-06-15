@@ -1,0 +1,10 @@
+api_version = "2024-04"
+
+[[extensions]]
+name = "t:name"
+handle = "zedonk-csv-action"
+type = "ui_extension"
+
+[[extensions.targeting]]
+module = "./src/AdminAction.jsx"
+target = "admin.order-details.action.render"
