@@ -38,7 +38,7 @@ function App() {
   const getDownloadUrl = () => {
     const orderId = data.selected[0]?.id;
     const numericId = orderId ? orderId.split('/').pop() : '';
-    return `https://zedonk-csv-export.vercel.app/api/order/${numericId}`;
+    return `https://zedonk-csv-export.onrender.com/api/order/${numericId}`;
   };
 
   return (
