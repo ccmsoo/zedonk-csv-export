@@ -1,55 +1,51 @@
-// extensions/order-export-action/src/index.jsx
-import React from 'react';
-import { 
+import React from "react";
+import {
   reactExtension,
+  useApi,
   AdminAction,
   BlockStack,
   Button,
   Text,
-} from '@shopify/ui-extensions-react/admin';
+  Link,
+} from "@shopify/ui-extensions-react/admin";
 
-// Admin Action Extension 정의
-const TARGET = 'admin.order-details.action.render';
+const TARGET = "admin.order-details.action.render";
 
 export default reactExtension(TARGET, () => <App />);
 
 function App() {
+  const { data, close } = useApi(TARGET);
+  
+  const orderId = data.selected?.[0]?.id;
+  const numericId = orderId ? orderId.split('/').pop() : '';
+  
   return (
     <AdminAction
-      primaryAction={{
-        content: 'Export Zedonk CSV',
-        onAction: async (api) => {
-          try {
-            // 현재 주문 ID 가져오기
-            const orderId = api.data.selected[0].id;
-            
-            // ID에서 숫자만 추출 (gid://shopify/Order/123456 -> 123456)
-            const numericOrderId = orderId.split('/').pop();
-            
-            // 앱 URL 구성
-            const appUrl = 'https://zedonk-csv-export.onrender.com';
-            const downloadUrl = `${appUrl}/api/order/${numericOrderId}`;
-            
-            // 새 창에서 다운로드 시작
-            window.open(downloadUrl, '_blank');
-            
-            // 또는 현재 창에서 다운로드
-            // window.location.href = downloadUrl;
-            
-          } catch (error) {
-            console.error('Export failed:', error);
-            api.close();
-          }
-        },
-      }}
-      secondaryAction={{
-        content: 'Cancel',
-        onAction: (api) => api.close(),
-      }}
+      primaryAction={
+        <Button onPress={() => close()} variant="primary">
+          닫기
+        </Button>
+      }
     >
-      <BlockStack>
-        <Text>
-          This will export the order data in Zedonk CSV format.
+      <BlockStack gap>
+        <Text variant="headingMd" as="h2">
+          Zedonk CSV Export
+        </Text>
+        
+        <Text variant="bodyMd" as="p">
+          주문 번호: {numericId}
+        </Text>
+        
+        <Text variant="bodyMd" as="p">
+          브라우저 새 탭에서 아래 주소를 입력하세요:
+        </Text>
+        
+        <Text variant="bodyMd" as="p" tone="critical">
+          https://zedonk-csv-export.onrender.com/api/order/{numericId}
+        </Text>
+        
+        <Text variant="bodySm" as="p" tone="subdued">
+          위 주소를 복사해서 새 탭에 붙여넣으면 CSV가 다운로드됩니다.
         </Text>
       </BlockStack>
     </AdminAction>
