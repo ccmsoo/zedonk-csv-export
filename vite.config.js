@@ -17,8 +17,18 @@ if (
   delete process.env.HOST;
 }
 
-const host = new URL(process.env.SHOPIFY_APP_URL || "http://localhost")
-  .hostname;
+// 안전한 URL 파싱
+let host = "localhost";
+try {
+  const appUrl = process.env.SHOPIFY_APP_URL || "http://localhost";
+  // URL이 아닌 경우를 위해 https:// 추가
+  const urlToParse = appUrl.startsWith('http') ? appUrl : `https://${appUrl}`;
+  host = new URL(urlToParse).hostname;
+} catch (e) {
+  console.warn("Invalid SHOPIFY_APP_URL, using localhost:", e.message);
+  host = "localhost";
+}
+
 let hmrConfig;
 
 if (host === "localhost") {
