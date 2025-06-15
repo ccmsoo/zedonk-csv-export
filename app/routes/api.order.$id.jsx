@@ -1,7 +1,7 @@
 import { json } from "@remix-run/node";
 
 // Private App Access Token (환경변수로 관리 권장)
-const PRIVATE_ACCESS_TOKEN = "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";
+const PRIVATE_ACCESS_TOKEN = "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";
 const SHOP_DOMAIN = "cpnmmm-wb.myshopify.com";
 
 export const loader = async ({ request, params }) => {
