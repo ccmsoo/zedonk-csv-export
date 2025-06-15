@@ -1,7 +1,7 @@
 import { json } from "@remix-run/node";
 
-// Private App Access Token (환경변수로 관리 권장)
-const PRIVATE_ACCESS_TOKEN = "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";
+// 환경변수에서 토큰 가져오기 (또는 하드코딩된 값 사용)
+const PRIVATE_ACCESS_TOKEN = process.env.SHOPIFY_PRIVATE_ACCESS_TOKEN || "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";
 const SHOP_DOMAIN = "cpnmmm-wb.myshopify.com";
 
 export const loader = async ({ request, params }) => {
@@ -22,10 +22,21 @@ export const loader = async ({ request, params }) => {
           order(id: $id) {
             name
             email
-            customer {
+            phone
+            shippingAddress {
               firstName
               lastName
-              email
+              name
+              address1
+              address2
+              city
+              zip
+              country
+            }
+            billingAddress {
+              firstName
+              lastName
+              name
             }
             lineItems(first: 100) {
               edges {
@@ -74,7 +85,7 @@ export const loader = async ({ request, params }) => {
       return json({ error: "Order not found" }, { status: 404 });
     }
 
-    // CSV 생성 (기존 코드와 동일)
+    // CSV 생성
     const csvRows = [];
     
     // 헤더 추가
@@ -92,10 +103,26 @@ export const loader = async ({ request, params }) => {
 
     // 주문 데이터로 행 생성
     order.lineItems.edges.forEach(({ node: item }) => {
-      const customerName = order.customer 
-        ? `${order.customer.firstName || ''} ${order.customer.lastName || ''}`.trim()
-        : 'Guest';
+      // Customer 객체 대신 다른 정보들 사용
+      let customerName = '';
       
+      // 우선순위: shippingAddress > billingAddress > email
+      if (order.shippingAddress?.name) {
+        customerName = order.shippingAddress.name;
+      } else if (order.shippingAddress?.firstName || order.shippingAddress?.lastName) {
+        customerName = `${order.shippingAddress.firstName || ''} ${order.shippingAddress.lastName || ''}`.trim();
+      } else if (order.billingAddress?.name) {
+        customerName = order.billingAddress.name;
+      } else if (order.billingAddress?.firstName || order.billingAddress?.lastName) {
+        customerName = `${order.billingAddress.firstName || ''} ${order.billingAddress.lastName || ''}`.trim();
+      } else if (order.email) {
+        // 이메일에서 이름 추출 (@ 앞부분)
+        customerName = order.email.split('@')[0];
+      } else {
+        customerName = 'Guest';
+      }
+      
+      // 옵션에서 Size와 Colour 추출
       let size = '';
       let colour = '';
       
@@ -115,9 +142,9 @@ export const loader = async ({ request, params }) => {
       csvRows.push([
         order.name,
         customerName,
-        '',
+        '',  // Account Code - 비워둠
         style,
-        '',
+        '',  // Fabric - 비워둠
         colour,
         size,
         item.variant?.barcode || '',
@@ -129,6 +156,7 @@ export const loader = async ({ request, params }) => {
     const csvContent = csvRows
       .map(row => row.map(cell => {
         const cellStr = String(cell || '');
+        // 쉼표, 큰따옴표, 줄바꿈이 있으면 큰따옴표로 감싸기
         if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
           return `"${cellStr.replace(/"/g, '""')}"`;
         }
@@ -136,9 +164,11 @@ export const loader = async ({ request, params }) => {
       }).join(','))
       .join('\n');
 
-    // BOM 추가
+    // BOM 추가 (Excel에서 UTF-8 인식)
     const bom = '\ufeff';
     const finalCsv = bom + csvContent;
+
+    console.log("CSV generated successfully");
 
     // CSV 파일로 응답
     return new Response(finalCsv, {
