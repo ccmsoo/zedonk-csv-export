@@ -1,20 +1,8 @@
-// app/routes/api.order.$id.jsx
 import { json } from "@remix-run/node";
-import { authenticate } from "../shopify.server"; 
 
-// OPTIONS 요청 처리 (CORS)
-export const action = async ({ request }) => {
-  if (request.method === "OPTIONS") {
-    return new Response(null, {
-      status: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-      },
-    });
-  }
-};
+// Private App Access Token (환경변수로 관리 권장)
+const PRIVATE_ACCESS_TOKEN = "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";
+const SHOP_DOMAIN = "cpnmmm-wb.myshopify.com";
 
 export const loader = async ({ request, params }) => {
   try {
@@ -22,73 +10,71 @@ export const loader = async ({ request, params }) => {
     console.log("API called with order ID:", orderId);
 
     if (!orderId) {
-      return json({ error: "Order ID is required" }, { 
-        status: 400,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-        }
-      });
+      return json({ error: "Order ID is required" }, { status: 400 });
     }
 
-    // 인증 없이 직접 GraphQL 클라이언트 생성
-    const { admin, session } = await authenticate.admin(request);
-
-    // GraphQL 쿼리로 주문 데이터 가져오기
-    const response = await admin.graphql(
-      `#graphql
-      query getOrder($id: ID!) {
-        order(id: $id) {
-          name
-          email
-          customer {
-            firstName
-            lastName
+    // Private App으로 GraphQL 요청
+    const graphqlEndpoint = `https://${SHOP_DOMAIN}/admin/api/2024-01/graphql.json`;
+    
+    const graphqlQuery = {
+      query: `
+        query getOrder($id: ID!) {
+          order(id: $id) {
+            name
             email
-          }
-          lineItems(first: 100) {
-            edges {
-              node {
-                title
-                quantity
-                variant {
-                  sku
-                  barcode
-                  product {
-                    title
-                  }
-                  selectedOptions {
-                    name
-                    value
+            customer {
+              firstName
+              lastName
+              email
+            }
+            lineItems(first: 100) {
+              edges {
+                node {
+                  title
+                  quantity
+                  variant {
+                    sku
+                    barcode
+                    selectedOptions {
+                      name
+                      value
+                    }
                   }
                 }
               }
             }
           }
         }
-      }`,
-      {
-        variables: {
-          id: `gid://shopify/Order/${orderId}`,
-        },
+      `,
+      variables: {
+        id: `gid://shopify/Order/${orderId}`
       }
-    );
+    };
+
+    const response = await fetch(graphqlEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Access-Token': PRIVATE_ACCESS_TOKEN,
+      },
+      body: JSON.stringify(graphqlQuery),
+    });
 
     const responseData = await response.json();
     console.log("GraphQL response received");
     
+    if (responseData.errors) {
+      console.error("GraphQL errors:", responseData.errors);
+      return json({ error: "GraphQL query failed", details: responseData.errors }, { status: 400 });
+    }
+    
     const order = responseData?.data?.order;
     
     if (!order) {
-      console.error("Order not found");
-      return json({ error: "Order not found" }, { 
-        status: 404,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-        }
-      });
+      return json({ error: "Order not found" }, { status: 404 });
     }
 
-    // Zedonk CSV 형식으로 데이터 변환
+    // CSV 생성 (기존 코드와 동일)
     const csvRows = [];
     
     // 헤더 추가
@@ -150,37 +136,25 @@ export const loader = async ({ request, params }) => {
       }).join(','))
       .join('\n');
 
-    // BOM 추가 (Excel UTF-8 지원)
+    // BOM 추가
     const bom = '\ufeff';
     const finalCsv = bom + csvContent;
 
-    console.log("CSV generated successfully");
-
-    // CSV 파일로 응답 - CORS 헤더 포함
+    // CSV 파일로 응답
     return new Response(finalCsv, {
       status: 200,
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="zedonk_order_${orderId}.csv"`,
         'Cache-Control': 'no-cache',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
       },
     });
 
   } catch (error) {
     console.error("API Error:", error);
-    
-    return new Response(JSON.stringify({ 
-      error: "Internal server error", 
-      details: error.message 
-    }), {
-      status: 500,
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
+    return json(
+      { error: "Internal server error", details: error.message },
+      { status: 500 }
+    );
   }
 };
