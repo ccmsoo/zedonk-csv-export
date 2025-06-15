@@ -1,5 +1,5 @@
 {
-  "name": "zedonk-csv-export",
+"postinstall": "prisma generate && prisma db push"  "name": "zedonk-csv-export",
   "private": true,
   "scripts": {
     "build": "remix vite:build",
