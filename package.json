@@ -1,5 +1,5 @@
 {
-"postinstall": "prisma generate && prisma db push"  "name": "zedonk-csv-export",
+  "name": "zedonk-csv-export",
   "private": true,
   "scripts": {
     "build": "remix vite:build",
@@ -17,7 +17,7 @@
     "prisma": "prisma",
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
-    "postinstall": "prisma generate && prisma migrate deploy"
+    "postinstall": "prisma generate && prisma db push"
   },
   "type": "module",
   "engines": {
