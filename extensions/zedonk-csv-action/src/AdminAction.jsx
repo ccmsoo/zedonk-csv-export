@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import {
   reactExtension,
   useApi,
@@ -6,7 +6,6 @@ import {
   BlockStack,
   Button,
   Text,
-  InlineStack,
 } from "@shopify/ui-extensions-react/admin";
 
 // Extension의 target을 정의
@@ -17,7 +16,6 @@ export default reactExtension(TARGET, () => <App />);
 
 function App() {
   const { data, close } = useApi(TARGET);
-  const [showLink, setShowLink] = useState(false);
 
   const handleExport = useCallback(() => {
     // 선택된 주문의 ID 가져오기
@@ -31,15 +29,15 @@ function App() {
     // GID에서 숫자 ID만 추출
     const numericId = orderId.split('/').pop();
     
-    // 다운로드 링크 표시
-    setShowLink(true);
-  }, [data]);
-
-  const getDownloadUrl = () => {
-    const orderId = data.selected[0]?.id;
-    const numericId = orderId ? orderId.split('/').pop() : '';
-    return `https://zedonk-csv-export.onrender.com/api/order/${numericId}`;
-  };
+    // 다운로드 URL 생성
+    const downloadUrl = `https://zedonk-csv-export.onrender.com/api/order/${numericId}`;
+    
+    // 새 창에서 열기
+    window.open(downloadUrl, '_blank');
+    
+    // 2초 후 모달 닫기
+    setTimeout(() => close(), 2000);
+  }, [data, close]);
 
   return (
     <AdminAction
@@ -48,7 +46,7 @@ function App() {
           onPress={handleExport}
           variant="primary"
         >
-          Generate Download Link
+          Download CSV
         </Button>
       }
       secondaryAction={
@@ -63,42 +61,16 @@ function App() {
         </Text>
         
         <Text variant="bodyMd" as="p">
-          This will download the order data in Zedonk's CSV format with the following columns:
+          Click "Download CSV" to export the order data.
         </Text>
         
-        <BlockStack gap="extraTight">
-          <Text variant="bodySm" as="p" tone="subdued">
-            • Order Reference
-          </Text>
-          <Text variant="bodySm" as="p" tone="subdued">
-            • Customer Name
-          </Text>
-          <Text variant="bodySm" as="p" tone="subdued">
-            • Style, Colour, Size
-          </Text>
-          <Text variant="bodySm" as="p" tone="subdued">
-            • Barcode & Quantity
-          </Text>
-        </BlockStack>
+        <Text variant="bodySm" as="p" tone="subdued">
+          A new tab will open to download the file.
+        </Text>
         
-        {showLink && (
-          <BlockStack gap="tight">
-            <Text variant="bodySm" as="p" tone="success">
-              ✅ Download link is ready!
-            </Text>
-            <Text variant="bodySm" as="p">
-              Copy this link and paste it in a new browser tab:
-            </Text>
-            <InlineStack gap="tight">
-              <Text variant="bodySm" as="p" tone="subdued">
-                {getDownloadUrl()}
-              </Text>
-            </InlineStack>
-            <Text variant="bodySm" as="p" tone="subdued">
-              Note: Open the link in a new tab to download the CSV file.
-            </Text>
-          </BlockStack>
-        )}
+        <Text variant="bodySm" as="p" tone="subdued">
+          If the download doesn't start, check your popup blocker.
+        </Text>
       </BlockStack>
     </AdminAction>
   );
