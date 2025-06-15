@@ -3,7 +3,7 @@
 client_id = "3861d325863458c740b3c4cc4664b1cd"
 name = "zedonk-csv-export"
 handle = "zedonk-csv-export"
-application_url = "https://soft-ambient-twin-involvement.trycloudflare.com"
+application_url = "https://loading-bacteria-above-vatican.trycloudflare.com"
 embedded = true
 
 [build]
@@ -26,7 +26,7 @@ api_version = "2025-04"
 scopes = "write_products"
 
 [auth]
-redirect_urls = ["https://soft-ambient-twin-involvement.trycloudflare.com/auth/callback", "https://soft-ambient-twin-involvement.trycloudflare.com/auth/shopify/callback", "https://soft-ambient-twin-involvement.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://loading-bacteria-above-vatican.trycloudflare.com/auth/callback", "https://loading-bacteria-above-vatican.trycloudflare.com/auth/shopify/callback", "https://loading-bacteria-above-vatican.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false
