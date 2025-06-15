@@ -1,6 +1,6 @@
 // app/routes/api.order.$id.jsx
 import { json } from "@remix-run/node";
-import { unauthenticated } from "../shopify.server";
+import { authenticate } from "../shopify.server"; 
 
 // OPTIONS 요청 처리 (CORS)
 export const action = async ({ request }) => {
