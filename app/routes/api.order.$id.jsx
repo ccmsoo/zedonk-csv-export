@@ -4,12 +4,30 @@ const PRIVATE_ACCESS_TOKEN = process.env.SHOPIFY_PRIVATE_ACCESS_TOKEN || "shpat_
 const SHOP_DOMAIN = "cpnmmm-wb.myshopify.com";
 
 export const loader = async ({ request, params }) => {
+  // CORS preflight 요청 처리
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Accept",
+        "Access-Control-Max-Age": "86400",
+      },
+    });
+  }
+
   try {
     const orderId = params.id;
     console.log("API called with order ID:", orderId);
 
     if (!orderId) {
-      return json({ error: "Order ID is required" }, { status: 400 });
+      return json({ error: "Order ID is required" }, { 
+        status: 400,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+        }
+      });
     }
 
     const graphqlEndpoint = `https://${SHOP_DOMAIN}/admin/api/2024-01/graphql.json`;
@@ -70,13 +88,23 @@ export const loader = async ({ request, params }) => {
     
     if (responseData.errors) {
       console.error("GraphQL errors:", responseData.errors);
-      return json({ error: "GraphQL query failed", details: responseData.errors }, { status: 400 });
+      return json({ error: "GraphQL query failed", details: responseData.errors }, { 
+        status: 400,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+        }
+      });
     }
     
     const order = responseData?.data?.order;
     
     if (!order) {
-      return json({ error: "Order not found" }, { status: 404 });
+      return json({ error: "Order not found" }, { 
+        status: 404,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+        }
+      });
     }
 
     // 고객 정보 추출 함수
@@ -233,6 +261,8 @@ export const loader = async ({ request, params }) => {
         'Content-Disposition': `attachment; filename="zedonk_order_${order.name.replace('#', '')}.csv"`,
         'Cache-Control': 'no-cache',
         'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Accept',
       },
     });
 
@@ -241,7 +271,12 @@ export const loader = async ({ request, params }) => {
     console.error("Error stack:", error.stack);
     return json(
       { error: "Internal server error", details: error.message },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+        }
+      }
     );
   }
 };
