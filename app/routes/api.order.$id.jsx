@@ -20,11 +20,11 @@ export const loader = async ({ request, params }) => {
           order(id: $id) {
             name
             note
-            noteAttributes {
-              name
+            tags
+            customAttributes {
+              key
               value
             }
-            tags
             lineItems(first: 100) {
               edges {
                 node {
@@ -55,6 +55,7 @@ export const loader = async ({ request, params }) => {
       }
     };
 
+    console.log("Sending GraphQL request...");
     const response = await fetch(graphqlEndpoint, {
       method: 'POST',
       headers: {
@@ -65,7 +66,7 @@ export const loader = async ({ request, params }) => {
     });
 
     const responseData = await response.json();
-    console.log("GraphQL response received");
+    console.log("GraphQL response received:", JSON.stringify(responseData, null, 2));
     
     if (responseData.errors) {
       console.error("GraphQL errors:", responseData.errors);
@@ -83,36 +84,54 @@ export const loader = async ({ request, params }) => {
       let customerName = '';
       let accountCode = '';
       
-      // 1. Note Attributes에서 찾기 (가장 정확)
-      if (order.noteAttributes && order.noteAttributes.length > 0) {
-        const nameAttr = order.noteAttributes.find(attr => attr.name === 'Customer Name');
-        const codeAttr = order.noteAttributes.find(attr => attr.name === 'Account Code');
-        
-        if (nameAttr) customerName = nameAttr.value;
-        if (codeAttr) accountCode = codeAttr.value;
+      // 1. Custom Attributes에서 찾기
+      if (order.customAttributes && order.customAttributes.length > 0) {
+        order.customAttributes.forEach(attr => {
+          if (attr.key === 'Customer Name' || attr.key === 'customer_name') {
+            customerName = attr.value;
+          }
+          if (attr.key === 'Account Code' || attr.key === 'account_code') {
+            accountCode = attr.value;
+          }
+        });
       }
       
       // 2. Order Note에서 파싱
-      if ((!customerName || !accountCode) && order.note) {
+      if (order.note) {
+        console.log("Order note content:", order.note);
+        
         // 고객명 추출: "고객명: XXX" 패턴
-        const nameMatch = order.note.match(/고객명:\s*([^\n]+)/);
-        if (nameMatch && !customerName) {
-          customerName = nameMatch[1].trim();
+        if (!customerName) {
+          const nameMatch = order.note.match(/고객명:\s*([^\n]+)/);
+          if (nameMatch) {
+            customerName = nameMatch[1].trim();
+          }
         }
         
         // Account Code 추출: "Account Code: XXX" 패턴
-        const codeMatch = order.note.match(/Account Code:\s*([^\n]+)/);
-        if (codeMatch && !accountCode) {
-          accountCode = codeMatch[1].trim();
+        if (!accountCode) {
+          const codeMatch = order.note.match(/Account Code:\s*([^\n]+)/);
+          if (codeMatch) {
+            accountCode = codeMatch[1].trim();
+          }
+        }
+        
+        // 대체 패턴들 시도
+        if (!customerName) {
+          // "Customer: XXX" 패턴
+          const altNameMatch = order.note.match(/Customer:\s*([^\n]+)/i);
+          if (altNameMatch) {
+            customerName = altNameMatch[1].trim();
+          }
         }
       }
       
-      // 3. Tags에서 추가 정보 찾기
+      // 3. Tags에서 찾기
       if (!customerName && order.tags) {
         const tags = order.tags.split(',').map(tag => tag.trim());
-        const customerTag = tags.find(tag => tag.startsWith('customer:'));
+        const customerTag = tags.find(tag => tag.toLowerCase().startsWith('customer:'));
         if (customerTag) {
-          customerName = customerTag.replace('customer:', '').replace(/_/g, ' ');
+          customerName = customerTag.substring(9).replace(/_/g, ' ').trim();
         }
       }
       
@@ -120,11 +139,11 @@ export const loader = async ({ request, params }) => {
       if (customerName === 'N/A') customerName = '';
       if (accountCode === 'N/A') accountCode = '';
       
+      console.log("Extracted customer info:", { customerName, accountCode });
       return { customerName, accountCode };
     };
 
     const { customerName, accountCode } = extractCustomerInfo();
-    console.log("Extracted info:", { customerName, accountCode });
 
     // CSV 생성
     const csvRows = [];
@@ -143,7 +162,7 @@ export const loader = async ({ request, params }) => {
     ]);
 
     // 주문 라인 아이템 처리
-    order.lineItems.edges.forEach(({ node: item }) => {
+    order.lineItems.edges.forEach(({ node: item }, index) => {
       let size = '';
       let colour = '';
       
@@ -162,12 +181,20 @@ export const loader = async ({ request, params }) => {
       // variant title에서 추가 정보 추출 (예: "M / Red")
       if (!size && !colour && item.variant?.title && item.variant.title !== 'Default Title') {
         const parts = item.variant.title.split(' / ');
-        if (parts.length >= 1 && !size) size = parts[0];
-        if (parts.length >= 2 && !colour) colour = parts[1];
+        if (parts.length >= 1 && !size) size = parts[0].trim();
+        if (parts.length >= 2 && !colour) colour = parts[1].trim();
       }
 
       const style = item.variant?.sku || item.title || '';
       const fabric = item.variant?.product?.productType || item.variant?.product?.vendor || '';
+
+      console.log(`Line item ${index + 1}:`, {
+        title: item.title,
+        sku: item.variant?.sku,
+        size,
+        colour,
+        quantity: item.quantity
+      });
 
       csvRows.push([
         order.name || '',
@@ -196,7 +223,8 @@ export const loader = async ({ request, params }) => {
     const bom = '\ufeff';
     const finalCsv = bom + csvContent;
 
-    console.log("CSV generated successfully with customer info");
+    console.log("CSV generated successfully");
+    console.log("First 500 chars of CSV:", finalCsv.substring(0, 500));
 
     return new Response(finalCsv, {
       status: 200,
@@ -210,6 +238,7 @@ export const loader = async ({ request, params }) => {
 
   } catch (error) {
     console.error("API Error:", error);
+    console.error("Error stack:", error.stack);
     return json(
       { error: "Internal server error", details: error.message },
       { status: 500 }
