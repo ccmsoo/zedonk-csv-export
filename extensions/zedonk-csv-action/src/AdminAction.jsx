@@ -7,8 +7,6 @@ import {
   Button,
   Text,
   Banner,
-  InlineStack,
-  Badge,
 } from "@shopify/ui-extensions-react/admin";
 
 const TARGET = "admin.order-details.action.render";
@@ -21,16 +19,16 @@ function App() {
   const [error, setError] = React.useState(null);
   const [downloadUrl, setDownloadUrl] = React.useState(null);
   const [copied, setCopied] = React.useState(false);
-  const [exportMode, setExportMode] = React.useState('single'); // 'single' or 'bulk'
   
-  // 선택된 주문 수 확인
-  const selectedCount = data.selected?.length || 0;
-  
-  const handleExportSingle = () => {
-    const orderId = data.selected?.[0]?.id;
+  const handleExport = () => {
+    // 주문 상세 페이지에서는 data.id를 직접 사용
+    const orderId = data?.id;
+    
+    console.log('Data object:', data); // 디버깅용
+    console.log('Order ID:', orderId); // 디버깅용
     
     if (!orderId) {
-      setError('주문을 선택해주세요.');
+      setError('주문 ID를 찾을 수 없습니다.');
       return;
     }
     
@@ -41,31 +39,7 @@ function App() {
       const numericId = orderId.split('/').pop();
       const url = `https://zedonk-csv-export.onrender.com/api/order/${numericId}`;
       
-      setDownloadUrl(url);
-      setLoading(false);
-      
-    } catch (err) {
-      console.error('Export error:', err);
-      setError(`URL 생성 실패: ${err.message}`);
-      setLoading(false);
-    }
-  };
-  
-  const handleExportBulk = () => {
-    if (!data.selected || data.selected.length === 0) {
-      setError('주문을 선택해주세요.');
-      return;
-    }
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // 모든 선택된 주문의 ID 추출
-      const orderIds = data.selected.map(order => order.id.split('/').pop());
-      const idsParam = orderIds.join(',');
-      
-      const url = `https://zedonk-csv-export.onrender.com/api/orders?ids=${idsParam}`;
+      console.log('Generated URL:', url); // 디버깅용
       
       setDownloadUrl(url);
       setLoading(false);
@@ -74,14 +48,6 @@ function App() {
       console.error('Export error:', err);
       setError(`URL 생성 실패: ${err.message}`);
       setLoading(false);
-    }
-  };
-  
-  const handleExport = () => {
-    if (exportMode === 'single') {
-      handleExportSingle();
-    } else {
-      handleExportBulk();
     }
   };
   
@@ -108,9 +74,9 @@ function App() {
           <Button 
             onPress={handleExport} 
             variant="primary"
-            disabled={loading || selectedCount === 0}
+            disabled={loading}
           >
-            {loading ? 'Processing...' : `Generate Link (${selectedCount} orders)`}
+            {loading ? 'Processing...' : 'Generate Download Link'}
           </Button>
         )
       }
@@ -125,41 +91,10 @@ function App() {
           Export to Zedonk CSV
         </Text>
         
-        {selectedCount > 1 && !loading && !downloadUrl && !error && (
-          <BlockStack gap>
-            <InlineStack gap>
-              <Badge tone="info">{selectedCount} orders selected</Badge>
-            </InlineStack>
-            
-            <BlockStack gap="tight">
-              <Button
-                variant={exportMode === 'single' ? 'primary' : 'plain'}
-                onPress={() => setExportMode('single')}
-                size="slim"
-              >
-                Export first order only
-              </Button>
-              <Button
-                variant={exportMode === 'bulk' ? 'primary' : 'plain'}
-                onPress={() => setExportMode('bulk')}
-                size="slim"
-              >
-                Export all {selectedCount} orders in one file
-              </Button>
-            </BlockStack>
-          </BlockStack>
-        )}
-        
-        {!error && !downloadUrl && !loading && selectedCount === 1 && (
+        {!error && !downloadUrl && !loading && (
           <Text variant="bodyMd" as="p">
-            다운로드 링크를 생성합니다.
+            주문 데이터를 CSV 파일로 다운로드합니다.
           </Text>
-        )}
-        
-        {selectedCount === 0 && (
-          <Banner tone="warning">
-            <Text>주문을 선택해주세요.</Text>
-          </Banner>
         )}
         
         {loading && (
