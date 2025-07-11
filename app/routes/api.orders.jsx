@@ -1,6 +1,7 @@
 import { json } from "@remix-run/node";
 
 const PRIVATE_ACCESS_TOKEN = process.env.SHOPIFY_PRIVATE_ACCESS_TOKEN;
+const SHOP_DOMAIN = "cpnmmm-wb.myshopify.com";
 
 if (!PRIVATE_ACCESS_TOKEN) {
   throw new Error("SHOPIFY_PRIVATE_ACCESS_TOKEN is not set");
