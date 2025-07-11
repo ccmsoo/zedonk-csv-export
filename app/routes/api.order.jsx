@@ -1,7 +1,10 @@
 import { json } from "@remix-run/node";
 
-const PRIVATE_ACCESS_TOKEN = process.env.SHOPIFY_PRIVATE_ACCESS_TOKEN || "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";
-const SHOP_DOMAIN = "cpnmmm-wb.myshopify.com";
+const PRIVATE_ACCESS_TOKEN = process.env.SHOPIFY_PRIVATE_ACCESS_TOKEN;
+
+if (!PRIVATE_ACCESS_TOKEN) {
+  throw new Error("SHOPIFY_PRIVATE_ACCESS_TOKEN is not set");
+}
 
 export const loader = async ({ request }) => {
   // CORS preflight 요청 처리
