@@ -25,7 +25,7 @@ function App() {
   // 선택된 주문 수 확인
   const selectedCount = data.selected?.length || 0;
   
-  const handleExportSingle = async () => {
+  const handleExportSingle = () => {
     const orderId = data.selected?.[0]?.id;
     
     if (!orderId) {
@@ -40,36 +40,8 @@ function App() {
       const numericId = orderId.split('/').pop();
       const downloadUrl = `https://zedonk-csv-export.onrender.com/api/order/${numericId}`;
       
-      const response = await fetch(downloadUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'text/csv',
-        },
-        mode: 'cors',
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const csvData = await response.text();
-      
-      // Blob 생성 및 다운로드
-      const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
-      const blobUrl = URL.createObjectURL(blob);
-      
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `zedonk_order_${numericId}.csv`;
-      link.style.display = 'none';
-      
-      document.body.appendChild(link);
-      link.click();
-      
-      setTimeout(() => {
-        document.body.removeChild(link);
-        URL.revokeObjectURL(blobUrl);
-      }, 100);
+      // 새 창에서 열기
+      window.open(downloadUrl, '_blank');
       
       setLoading(false);
       setDownloadReady(true);
@@ -85,7 +57,7 @@ function App() {
     }
   };
   
-  const handleExportBulk = async () => {
+  const handleExportBulk = () => {
     if (!data.selected || data.selected.length === 0) {
       setError('주문을 선택해주세요.');
       return;
@@ -101,39 +73,8 @@ function App() {
       
       const downloadUrl = `https://zedonk-csv-export.onrender.com/api/orders?ids=${idsParam}`;
       
-      const response = await fetch(downloadUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'text/csv',
-        },
-        mode: 'cors',
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const csvData = await response.text();
-      
-      // Blob 생성 및 다운로드
-      const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
-      const blobUrl = URL.createObjectURL(blob);
-      
-      const date = new Date().toISOString().split('T')[0];
-      const filename = `zedonk_orders_${orderIds.length}_${date}.csv`;
-      
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = filename;
-      link.style.display = 'none';
-      
-      document.body.appendChild(link);
-      link.click();
-      
-      setTimeout(() => {
-        document.body.removeChild(link);
-        URL.revokeObjectURL(blobUrl);
-      }, 100);
+      // 새 창에서 열기
+      window.open(downloadUrl, '_blank');
       
       setLoading(false);
       setDownloadReady(true);

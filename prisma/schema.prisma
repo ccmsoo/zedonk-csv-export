@@ -9,10 +9,9 @@ generator client {
 // enough when changing adapters.
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
-  provider = "postgresql"  // "sqlite"에서 변경
-  url      = env("DATABASE_URL")  // file:dev.sqlite에서 변경
+  provider = "sqlite"
+  url      = "file:./dev.sqlite"
 }
-
 model Session {
   id            String    @id
   shop          String
