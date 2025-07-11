@@ -17,7 +17,8 @@ export default reactExtension(TARGET, () => <App />);
 function App() {
   const { data, close } = useApi(TARGET);
   const [loading, setLoading] = React.useState(false);
-  const [showInstructions, setShowInstructions] = React.useState(false);
+  const [downloadUrl, setDownloadUrl] = React.useState(null);
+  const [copied, setCopied] = React.useState(false);
   
   // 선택된 주문 수 확인
   const selectedCount = data.selected?.length || 0;
@@ -34,39 +35,49 @@ function App() {
       const orderIds = data.selected.map(order => order.id.split('/').pop());
       const idsParam = orderIds.join(',');
       
-      const downloadUrl = `https://zedonk-csv-export.onrender.com/api/orders?ids=${idsParam}`;
+      const url = `https://zedonk-csv-export.onrender.com/api/orders?ids=${idsParam}`;
       
-      // 새 창에서 열기
-      window.open(downloadUrl, '_blank');
-      
+      setDownloadUrl(url);
       setLoading(false);
-      setShowInstructions(true);
-      
-      // 3초 후 자동으로 닫기
-      setTimeout(() => {
-        close();
-      }, 3000);
       
     } catch (err) {
       console.error('Export error:', err);
       setLoading(false);
     }
   };
+  
+  const copyToClipboard = () => {
+    if (downloadUrl) {
+      navigator.clipboard.writeText(downloadUrl).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    }
+  };
 
   return (
     <AdminAction
       primaryAction={
-        <Button 
-          onPress={handleExportBulk} 
-          variant="primary"
-          disabled={loading || selectedCount === 0}
-        >
-          {loading ? 'Processing...' : `Export ${selectedCount} Orders`}
-        </Button>
+        downloadUrl ? (
+          <Button 
+            onPress={copyToClipboard} 
+            variant="primary"
+          >
+            {copied ? 'Copied!' : 'Copy Download Link'}
+          </Button>
+        ) : (
+          <Button 
+            onPress={handleExportBulk} 
+            variant="primary"
+            disabled={loading || selectedCount === 0}
+          >
+            {loading ? 'Processing...' : `Generate Link for ${selectedCount} Orders`}
+          </Button>
+        )
       }
       secondaryAction={
         <Button onPress={() => close()} variant="plain">
-          Cancel
+          {downloadUrl ? 'Close' : 'Cancel'}
         </Button>
       }
     >
@@ -75,7 +86,7 @@ function App() {
           Export to Zedonk CSV
         </Text>
         
-        {selectedCount > 0 && !showInstructions && (
+        {selectedCount > 0 && !downloadUrl && (
           <BlockStack gap="tight">
             <Badge tone="info">{selectedCount} orders selected</Badge>
             <Text variant="bodyMd" as="p">
@@ -90,10 +101,21 @@ function App() {
           </Banner>
         )}
         
-        {showInstructions && (
-          <Banner tone="success">
-            <Text>새 창에서 다운로드가 시작됩니다. 팝업이 차단된 경우 허용해주세요.</Text>
+        {loading && (
+          <Banner tone="info">
+            <Text>링크 생성 중...</Text>
           </Banner>
+        )}
+        
+        {downloadUrl && (
+          <BlockStack gap>
+            <Banner tone="success">
+              <Text>링크가 생성되었습니다! 복사 버튼을 클릭하고 새 창에서 열어주세요.</Text>
+            </Banner>
+            <Text variant="bodySm" as="p" tone="subdued">
+              {downloadUrl}
+            </Text>
+          </BlockStack>
         )}
       </BlockStack>
     </AdminAction>

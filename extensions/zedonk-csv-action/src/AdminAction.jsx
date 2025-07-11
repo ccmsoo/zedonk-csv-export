@@ -19,7 +19,8 @@ function App() {
   const { data, close } = useApi(TARGET);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
-  const [downloadReady, setDownloadReady] = React.useState(false);
+  const [downloadUrl, setDownloadUrl] = React.useState(null);
+  const [copied, setCopied] = React.useState(false);
   const [exportMode, setExportMode] = React.useState('single'); // 'single' or 'bulk'
   
   // 선택된 주문 수 확인
@@ -38,21 +39,14 @@ function App() {
     
     try {
       const numericId = orderId.split('/').pop();
-      const downloadUrl = `https://zedonk-csv-export.onrender.com/api/order/${numericId}`;
+      const url = `https://zedonk-csv-export.onrender.com/api/order/${numericId}`;
       
-      // 새 창에서 열기
-      window.open(downloadUrl, '_blank');
-      
+      setDownloadUrl(url);
       setLoading(false);
-      setDownloadReady(true);
-      
-      setTimeout(() => {
-        close();
-      }, 2000);
       
     } catch (err) {
       console.error('Export error:', err);
-      setError(`다운로드 실패: ${err.message}`);
+      setError(`URL 생성 실패: ${err.message}`);
       setLoading(false);
     }
   };
@@ -71,21 +65,14 @@ function App() {
       const orderIds = data.selected.map(order => order.id.split('/').pop());
       const idsParam = orderIds.join(',');
       
-      const downloadUrl = `https://zedonk-csv-export.onrender.com/api/orders?ids=${idsParam}`;
+      const url = `https://zedonk-csv-export.onrender.com/api/orders?ids=${idsParam}`;
       
-      // 새 창에서 열기
-      window.open(downloadUrl, '_blank');
-      
+      setDownloadUrl(url);
       setLoading(false);
-      setDownloadReady(true);
-      
-      setTimeout(() => {
-        close();
-      }, 2000);
       
     } catch (err) {
       console.error('Export error:', err);
-      setError(`다운로드 실패: ${err.message}`);
+      setError(`URL 생성 실패: ${err.message}`);
       setLoading(false);
     }
   };
@@ -97,30 +84,40 @@ function App() {
       handleExportBulk();
     }
   };
+  
+  const copyToClipboard = () => {
+    if (downloadUrl) {
+      navigator.clipboard.writeText(downloadUrl).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    }
+  };
 
   return (
     <AdminAction
       primaryAction={
-        !downloadReady ? (
+        downloadUrl ? (
+          <Button 
+            onPress={copyToClipboard} 
+            variant="primary"
+          >
+            {copied ? 'Copied!' : 'Copy Download Link'}
+          </Button>
+        ) : (
           <Button 
             onPress={handleExport} 
             variant="primary"
             disabled={loading || selectedCount === 0}
           >
-            {loading ? 'Downloading...' : `Download CSV (${selectedCount} orders)`}
-          </Button>
-        ) : (
-          <Button onPress={() => close()} variant="primary">
-            Done
+            {loading ? 'Processing...' : `Generate Link (${selectedCount} orders)`}
           </Button>
         )
       }
       secondaryAction={
-        !loading && (
-          <Button onPress={() => close()} variant="plain">
-            Cancel
-          </Button>
-        )
+        <Button onPress={() => close()} variant="plain">
+          {downloadUrl ? 'Close' : 'Cancel'}
+        </Button>
       }
     >
       <BlockStack gap>
@@ -128,7 +125,7 @@ function App() {
           Export to Zedonk CSV
         </Text>
         
-        {selectedCount > 1 && !loading && !downloadReady && !error && (
+        {selectedCount > 1 && !loading && !downloadUrl && !error && (
           <BlockStack gap>
             <InlineStack gap>
               <Badge tone="info">{selectedCount} orders selected</Badge>
@@ -153,9 +150,9 @@ function App() {
           </BlockStack>
         )}
         
-        {!error && !downloadReady && !loading && selectedCount === 1 && (
+        {!error && !downloadUrl && !loading && selectedCount === 1 && (
           <Text variant="bodyMd" as="p">
-            주문 데이터를 CSV 파일로 다운로드합니다.
+            다운로드 링크를 생성합니다.
           </Text>
         )}
         
@@ -167,18 +164,19 @@ function App() {
         
         {loading && (
           <Banner tone="info">
-            <Text>
-              {exportMode === 'bulk' && selectedCount > 1 
-                ? `${selectedCount}개의 주문을 다운로드 중입니다...` 
-                : '다운로드 중입니다...'}
-            </Text>
+            <Text>링크 생성 중...</Text>
           </Banner>
         )}
         
-        {downloadReady && (
-          <Banner tone="success">
-            <Text>다운로드가 완료되었습니다!</Text>
-          </Banner>
+        {downloadUrl && (
+          <BlockStack gap>
+            <Banner tone="success">
+              <Text>링크가 생성되었습니다! 복사 버튼을 클릭하고 새 창에서 열어주세요.</Text>
+            </Banner>
+            <Text variant="bodySm" as="p" tone="subdued">
+              {downloadUrl}
+            </Text>
+          </BlockStack>
         )}
         
         {error && (
