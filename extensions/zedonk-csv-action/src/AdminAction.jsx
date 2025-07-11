@@ -21,14 +21,20 @@ function App() {
   const [copied, setCopied] = React.useState(false);
   
   const handleExport = () => {
-    // 주문 상세 페이지에서는 data.id를 직접 사용
-    const orderId = data?.id;
+    // 전체 data 객체 구조 확인
+    console.log('Full data object:', JSON.stringify(data, null, 2));
     
-    console.log('Data object:', data); // 디버깅용
-    console.log('Order ID:', orderId); // 디버깅용
+    // 가능한 경로들 시도
+    const orderId = data?.id || 
+                   data?.order?.id || 
+                   data?.selected?.[0]?.id ||
+                   data?.orderId ||
+                   data?.resource?.id;
+    
+    console.log('Found Order ID:', orderId);
     
     if (!orderId) {
-      setError('주문 ID를 찾을 수 없습니다.');
+      setError('주문 ID를 찾을 수 없습니다. 콘솔을 확인해주세요.');
       return;
     }
     
