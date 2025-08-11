@@ -7,33 +7,59 @@ if (!PRIVATE_ACCESS_TOKEN) {
   throw new Error("SHOPIFY_PRIVATE_ACCESS_TOKEN is not set");
 }
 
-// Style 추출 함수 - 바코드에서 사이즈 정보 제거
+// Style 추출 함수 - 바코드에서 컬러+사이즈 정보 제거
 const extractStyleFromBarcode = (barcode) => {
   if (!barcode) return '';
   
-  // 사이즈 패턴들 (대소문자 구분 없이)
-  const sizePatterns = [
-    // 구체적인 패턴부터
-    /BKXL$/i, /WHXL$/i, /GRXL$/i, /NVXL$/i, /BRXL$/i,
-    /BKXXL$/i, /WHXXL$/i, /GRXXL$/i, /NVXXL$/i, /BRXXL$/i,
-    /BKL$/i, /WHL$/i, /GRL$/i, /NVL$/i, /BRL$/i,
-    /BKM$/i, /WHM$/i, /GRM$/i, /NVM$/i, /BRM$/i,
-    /BKS$/i, /WHS$/i, /GRS$/i, /NVS$/i, /BRS$/i,
-    /BKXS$/i, /WHXS$/i, /GRXS$/i, /NVXS$/i, /BRXS$/i,
-    // 일반적인 사이즈
-    /XXL$/i, /XL$/i, /L$/i, /M$/i, /S$/i, /XS$/i,
-    // 숫자 사이즈
-    /\d{2,3}$/  // 마지막 2-3자리 숫자
-  ];
-  
   let style = barcode;
-  for (const pattern of sizePatterns) {
-    if (pattern.test(style)) {
-      style = style.replace(pattern, '');
-      break;
+  
+  // 1. 의류 사이즈 체크 (XXXL, XXL, XL, L, M, S, XS, XXS)
+  const clothingSizes = ['XXXL', 'XXL', 'XL', 'L', 'M', 'S', 'XS', 'XXS' , 'OS'];
+  
+  for (const size of clothingSizes) {
+    if (style.toUpperCase().endsWith(size)) {
+      // 사이즈 제거
+      style = style.substring(0, style.length - size.length);
+      // 컬러 코드(2글자)도 제거
+      if (style.length >= 2) {
+        style = style.substring(0, style.length - 2);
+      }
+      return style;
     }
   }
   
+  // 2. 신발 사이즈 체크 (220, 225, 230, ..., 290, 295, 300)
+  const shoeSizes = [];
+  for (let i = 220; i <= 300; i += 5) {
+    shoeSizes.push(i.toString());
+  }
+  
+  for (const size of shoeSizes) {
+    if (style.endsWith(size)) {
+      // 사이즈 제거
+      style = style.substring(0, style.length - size.length);
+      // 컬러 코드(2글자)도 제거
+      if (style.length >= 2) {
+        style = style.substring(0, style.length - 2);
+      }
+      return style;
+    }
+  }
+  
+  // 3. 한 자리 숫자 사이즈 체크 (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+  // 바코드 끝이 숫자 한 자리인 경우
+  const lastChar = style.charAt(style.length - 1);
+  if (/^\d$/.test(lastChar)) {
+    // 숫자 사이즈 제거
+    style = style.substring(0, style.length - 1);
+    // 컬러 코드(2글자)도 제거
+    if (style.length >= 2) {
+      style = style.substring(0, style.length - 2);
+    }
+    return style;
+  }
+  
+  // 4. 아무 사이즈도 매칭되지 않으면 원본 반환
   return style;
 };
 
@@ -331,7 +357,7 @@ export const loader = async ({ request }) => {
                       item.variant?.product?.productType || 
                       '';
 
-        console.log(`Style/Barcode extraction - Barcode: ${barcode}, Style: ${style}, Fabric: ${fabric}`);
+        console.log(`Processing item - Barcode: ${barcode}, Extracted Style: ${style}, Fabric: ${fabric}`);
 
         csvRows.push([
           order.name || '',
