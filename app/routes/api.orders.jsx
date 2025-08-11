@@ -11,47 +11,11 @@ if (!PRIVATE_ACCESS_TOKEN) {
 const extractStyleFromBarcode = (barcode) => {
   if (!barcode) return '';
   
-  let style = barcode;
+  let style = barcode.toUpperCase(); // 대문자로 통일
   
-  // 1. 의류 사이즈 체크 (XXXL, XXL, XL, L, M, S, XS, XXS)
-  const clothingSizes = ['XXXL', 'XXL', 'XL', 'L', 'M', 'S', 'XS', 'XXS' , 'OS'];
-  
-  for (const size of clothingSizes) {
-    if (style.toUpperCase().endsWith(size)) {
-      // 사이즈 제거
-      style = style.substring(0, style.length - size.length);
-      // 컬러 코드(2글자)도 제거
-      if (style.length >= 2) {
-        style = style.substring(0, style.length - 2);
-      }
-      return style;
-    }
-  }
-  
-  // 2. 신발 사이즈 체크 (220, 225, 230, ..., 290, 295, 300)
-  const shoeSizes = [];
-  for (let i = 220; i <= 300; i += 5) {
-    shoeSizes.push(i.toString());
-  }
-  
-  for (const size of shoeSizes) {
-    if (style.endsWith(size)) {
-      // 사이즈 제거
-      style = style.substring(0, style.length - size.length);
-      // 컬러 코드(2글자)도 제거
-      if (style.length >= 2) {
-        style = style.substring(0, style.length - 2);
-      }
-      return style;
-    }
-  }
-  
-  // 3. 한 자리 숫자 사이즈 체크 (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
-  // 바코드 끝이 숫자 한 자리인 경우
-  const lastChar = style.charAt(style.length - 1);
-  if (/^\d$/.test(lastChar)) {
-    // 숫자 사이즈 제거
-    style = style.substring(0, style.length - 1);
+  // 1. OS 사이즈 체크 (ONE SIZE)
+  if (style.endsWith('OS')) {
+    style = style.substring(0, style.length - 2);
     // 컬러 코드(2글자)도 제거
     if (style.length >= 2) {
       style = style.substring(0, style.length - 2);
@@ -59,7 +23,45 @@ const extractStyleFromBarcode = (barcode) => {
     return style;
   }
   
-  // 4. 아무 사이즈도 매칭되지 않으면 원본 반환
+  // 2. 의류 사이즈 체크 (XXXL, XXL, XL, L, M, S, XS, XXS)
+  const clothingSizes = ['XXXL', 'XXL', 'XL', 'L', 'M', 'S', 'XS', 'XXS'];
+  
+  for (const size of clothingSizes) {
+    if (style.endsWith(size)) {
+      style = style.substring(0, style.length - size.length);
+      if (style.length >= 2) {
+        style = style.substring(0, style.length - 2);
+      }
+      return style;
+    }
+  }
+  
+  // 3. 신발 사이즈 체크 (220-300)
+  const shoeSizes = [];
+  for (let i = 220; i <= 300; i += 5) {
+    shoeSizes.push(i.toString());
+  }
+  
+  for (const size of shoeSizes) {
+    if (style.endsWith(size)) {
+      style = style.substring(0, style.length - size.length);
+      if (style.length >= 2) {
+        style = style.substring(0, style.length - 2);
+      }
+      return style;
+    }
+  }
+  
+  // 4. 한 자리 숫자 사이즈 체크
+  const lastChar = style.charAt(style.length - 1);
+  if (/^\d$/.test(lastChar)) {
+    style = style.substring(0, style.length - 1);
+    if (style.length >= 2) {
+      style = style.substring(0, style.length - 2);
+    }
+    return style;
+  }
+  
   return style;
 };
 
@@ -350,14 +352,16 @@ export const loader = async ({ request }) => {
 
         // Style 추출 - 바코드에서 사이즈 정보 제거
         const barcode = item.variant?.barcode || '';
-        const style = extractStyleFromBarcode(barcode) || item.variant?.sku || '';
+        console.log(`Raw barcode value: "${barcode}"`); // 디버깅용
+        
+        const style = barcode ? extractStyleFromBarcode(barcode) : (item.variant?.sku || '');
         
         // Fabric 추출 - 새로운 함수 사용
         const fabric = extractFabricFromTitleAndTags(item) || 
                       item.variant?.product?.productType || 
                       '';
 
-        console.log(`Processing item - Barcode: ${barcode}, Extracted Style: ${style}, Fabric: ${fabric}`);
+        console.log(`Processing: Barcode="${barcode}", Style="${style}", Fabric="${fabric}"`);
 
         csvRows.push([
           order.name || '',
