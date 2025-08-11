@@ -292,26 +292,45 @@ export const loader = async ({ request }) => {
           if (parts.length >= 2 && !colour) colour = parts[1].trim();
         }
 
-        const style = item.variant?.sku || item.title || '';
+        // Style 추출 - 바코드에서 사이즈 정보 제거
+        const extractStyleFromBarcode = (barcode) => {
+          if (!barcode) return '';
+          
+          // 사이즈 패턴들 (대소문자 구분 없이)
+          const sizePatterns = [
+            // 구체적인 패턴부터
+            /BKXL$/i, /WHXL$/i, /GRXL$/i, /NVXL$/i, /BRXL$/i,
+            /BKXXL$/i, /WHXXL$/i, /GRXXL$/i, /NVXXL$/i, /BRXXL$/i,
+            /BKL$/i, /WHL$/i, /GRL$/i, /NVL$/i, /BRL$/i,
+            /BKM$/i, /WHM$/i, /GRM$/i, /NVM$/i, /BRM$/i,
+            /BKS$/i, /WHS$/i, /GRS$/i, /NVS$/i, /BRS$/i,
+            /BKXS$/i, /WHXS$/i, /GRXS$/i, /NVXS$/i, /BRXS$/i,
+            // 일반적인 사이즈
+            /XXL$/i, /XL$/i, /L$/i, /M$/i, /S$/i, /XS$/i,
+            // 숫자 사이즈
+            /\d{2,3}$/  // 마지막 2-3자리 숫자
+          ];
+          
+          let style = barcode;
+          for (const pattern of sizePatterns) {
+            if (pattern.test(style)) {
+              style = style.replace(pattern, '');
+              break;
+            }
+          }
+          
+          return style;
+        };
+        
+        const barcode = item.variant?.barcode || '';
+        const style = extractStyleFromBarcode(barcode) || item.variant?.sku || '';
         
         // Fabric 추출 - 새로운 함수 사용
         const fabric = extractFabricFromTitleAndTags(item) || 
                       item.variant?.product?.productType || 
                       '';
 
-        console.log(`Fabric extraction - Title: ${item.title}, Product Tags: ${item.variant?.product?.tags}, Fabric: ${fabric}`);
-
-        csvRows.push([
-          order.name || '',
-          customerName,
-          accountCode,
-          style,
-          fabric,
-          colour || '',
-          size || '',
-          item.variant?.barcode || '',
-          item.quantity.toString()
-        ]);
+        console.log(`Style/Barcode extraction - Barcode: ${barcode}, Style: ${style}, Fabric: ${fabric}`);
       });
     });
 
