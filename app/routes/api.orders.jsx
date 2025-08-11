@@ -350,18 +350,22 @@ export const loader = async ({ request }) => {
           if (parts.length >= 2 && !colour) colour = parts[1].trim();
         }
 
-        // Style 추출 - 바코드에서 사이즈 정보 제거
+        // Style 추출 - SKU 또는 바코드에서 사이즈 정보 제거
+        const sku = item.variant?.sku || '';
         const barcode = item.variant?.barcode || '';
-        console.log(`Raw barcode value: "${barcode}"`); // 디버깅용
         
-        const style = barcode ? extractStyleFromBarcode(barcode) : (item.variant?.sku || '');
+        console.log(`Debug - SKU: "${sku}", Barcode: "${barcode}"`);
+        
+        // SKU가 있으면 SKU에서, 없으면 바코드에서 추출
+        const sourceCode = sku || barcode;
+        const style = sourceCode ? extractStyleFromBarcode(sourceCode) : '';
         
         // Fabric 추출 - 새로운 함수 사용
         const fabric = extractFabricFromTitleAndTags(item) || 
                       item.variant?.product?.productType || 
                       '';
 
-        console.log(`Processing: Barcode="${barcode}", Style="${style}", Fabric="${fabric}"`);
+        console.log(`Final - Source: "${sourceCode}", Style: "${style}", Fabric: "${fabric}"`);
 
         csvRows.push([
           order.name || '',
