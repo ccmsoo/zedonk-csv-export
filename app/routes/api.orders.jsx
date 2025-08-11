@@ -73,6 +73,7 @@ export const loader = async ({ request }) => {
                         title
                         productType
                         vendor
+                        tags
                       }
                     }
                   }
@@ -179,6 +180,75 @@ export const loader = async ({ request }) => {
       return { customerName, accountCode };
     };
 
+    // Fabric 카테고리 추출 함수
+    const extractFabricFromTitleAndTags = (item) => {
+      // 1. 먼저 product tags에서 확인 (SHOES, BAG은 태그 우선)
+      if (item.variant?.product?.tags) {
+        const productTags = item.variant.product.tags.map(tag => tag.toLowerCase());
+        
+        // shoes 태그 확인
+        if (productTags.includes('shoes')) {
+          return 'SHOES';
+        }
+        
+        // bag 태그 확인
+        if (productTags.includes('bag')) {
+          return 'BAG';
+        }
+      }
+      
+      // 2. 태그에 없으면 상품명에서 추출
+      const title = item.title || item.variant?.product?.title || '';
+      if (!title) return '';
+      
+      const upperTitle = title.toUpperCase();
+      
+      // 카테고리 매칭 규칙 (순서 중요!)
+      const categoryRules = [
+        // 구체적인 카테고리부터 먼저 체크
+        { keyword: 'LONG TEE', category: 'LONG TEE' },
+        { keyword: 'CARDIGAN', category: 'CARDIGAN' },
+        { keyword: 'JUMPER', category: 'JUMPER' },
+        { keyword: 'JACKET', category: 'JACKET' },
+        { keyword: 'DENIM', category: 'DENIM' },
+        { keyword: 'COAT', category: 'COAT' },
+        { keyword: 'DRESS', category: 'DRESS' },
+        { keyword: 'VEST', category: 'VEST' },
+        { keyword: 'SKIRT', category: 'SKIRT' },
+        { keyword: 'PANTS', category: 'PANTS' },
+        { keyword: 'SHIRT', category: 'SHIRTS' },
+        { keyword: 'KNIT', category: 'KNIT' },
+        { keyword: 'TOP', category: 'TOP' },
+        
+        // Outwear/Bottom 카테고리 매핑
+        { keyword: 'OUTWEAR', category: 'COAT' },
+        { keyword: 'OUTERWEAR', category: 'COAT' },
+        { keyword: 'BOTTOM', category: 'PANTS' },
+        { keyword: 'TROUSER', category: 'PANTS' },
+        
+        // ACC는 가장 마지막에
+        { keyword: 'HAT', category: 'ACC' },
+        { keyword: 'CAP', category: 'ACC' },
+        { keyword: 'BELT', category: 'ACC' },
+        { keyword: 'SCARF', category: 'ACC' },
+        { keyword: 'TIE', category: 'ACC' },
+        { keyword: 'SOCKS', category: 'ACC' },
+        { keyword: 'GLOVE', category: 'ACC' },
+        { keyword: 'WALLET', category: 'ACC' },
+        { keyword: 'ACCESSORY', category: 'ACC' },
+        { keyword: 'ACC', category: 'ACC' }
+      ];
+      
+      // 규칙에 따라 매칭
+      for (const rule of categoryRules) {
+        if (upperTitle.includes(rule.keyword)) {
+          return rule.category;
+        }
+      }
+      
+      return ''; // 매칭 안되면 빈값
+    };
+
     // CSV 생성
     const csvRows = [];
     
@@ -223,7 +293,13 @@ export const loader = async ({ request }) => {
         }
 
         const style = item.variant?.sku || item.title || '';
-        const fabric = item.variant?.product?.productType || item.variant?.product?.vendor || '';
+        
+        // Fabric 추출 - 새로운 함수 사용
+        const fabric = extractFabricFromTitleAndTags(item) || 
+                      item.variant?.product?.productType || 
+                      '';
+
+        console.log(`Fabric extraction - Title: ${item.title}, Product Tags: ${item.variant?.product?.tags}, Fabric: ${fabric}`);
 
         csvRows.push([
           order.name || '',
