@@ -7,6 +7,105 @@ if (!PRIVATE_ACCESS_TOKEN) {
   throw new Error("SHOPIFY_PRIVATE_ACCESS_TOKEN is not set");
 }
 
+// Style 추출 함수 - 바코드에서 사이즈 정보 제거
+const extractStyleFromBarcode = (barcode) => {
+  if (!barcode) return '';
+  
+  // 사이즈 패턴들 (대소문자 구분 없이)
+  const sizePatterns = [
+    // 구체적인 패턴부터
+    /BKXL$/i, /WHXL$/i, /GRXL$/i, /NVXL$/i, /BRXL$/i,
+    /BKXXL$/i, /WHXXL$/i, /GRXXL$/i, /NVXXL$/i, /BRXXL$/i,
+    /BKL$/i, /WHL$/i, /GRL$/i, /NVL$/i, /BRL$/i,
+    /BKM$/i, /WHM$/i, /GRM$/i, /NVM$/i, /BRM$/i,
+    /BKS$/i, /WHS$/i, /GRS$/i, /NVS$/i, /BRS$/i,
+    /BKXS$/i, /WHXS$/i, /GRXS$/i, /NVXS$/i, /BRXS$/i,
+    // 일반적인 사이즈
+    /XXL$/i, /XL$/i, /L$/i, /M$/i, /S$/i, /XS$/i,
+    // 숫자 사이즈
+    /\d{2,3}$/  // 마지막 2-3자리 숫자
+  ];
+  
+  let style = barcode;
+  for (const pattern of sizePatterns) {
+    if (pattern.test(style)) {
+      style = style.replace(pattern, '');
+      break;
+    }
+  }
+  
+  return style;
+};
+
+// Fabric 카테고리 추출 함수
+const extractFabricFromTitleAndTags = (item) => {
+  // 1. 먼저 product tags에서 확인 (SHOES, BAG은 태그 우선)
+  if (item.variant?.product?.tags) {
+    const productTags = item.variant.product.tags.map(tag => tag.toLowerCase());
+    
+    // shoes 태그 확인
+    if (productTags.includes('shoes')) {
+      return 'SHOES';
+    }
+    
+    // bag 태그 확인
+    if (productTags.includes('bag')) {
+      return 'BAG';
+    }
+  }
+  
+  // 2. 태그에 없으면 상품명에서 추출
+  const title = item.title || item.variant?.product?.title || '';
+  if (!title) return '';
+  
+  const upperTitle = title.toUpperCase();
+  
+  // 카테고리 매칭 규칙 (순서 중요!)
+  const categoryRules = [
+    // 구체적인 카테고리부터 먼저 체크
+    { keyword: 'LONG TEE', category: 'LONG TEE' },
+    { keyword: 'CARDIGAN', category: 'CARDIGAN' },
+    { keyword: 'JUMPER', category: 'JUMPER' },
+    { keyword: 'JACKET', category: 'JACKET' },
+    { keyword: 'DENIM', category: 'DENIM' },
+    { keyword: 'COAT', category: 'COAT' },
+    { keyword: 'DRESS', category: 'DRESS' },
+    { keyword: 'VEST', category: 'VEST' },
+    { keyword: 'SKIRT', category: 'SKIRT' },
+    { keyword: 'PANTS', category: 'PANTS' },
+    { keyword: 'SHIRT', category: 'SHIRTS' },
+    { keyword: 'KNIT', category: 'KNIT' },
+    { keyword: 'TOP', category: 'TOP' },
+    
+    // Outwear/Bottom 카테고리 매핑
+    { keyword: 'OUTWEAR', category: 'COAT' },
+    { keyword: 'OUTERWEAR', category: 'COAT' },
+    { keyword: 'BOTTOM', category: 'PANTS' },
+    { keyword: 'TROUSER', category: 'PANTS' },
+    
+    // ACC는 가장 마지막에
+    { keyword: 'HAT', category: 'ACC' },
+    { keyword: 'CAP', category: 'ACC' },
+    { keyword: 'BELT', category: 'ACC' },
+    { keyword: 'SCARF', category: 'ACC' },
+    { keyword: 'TIE', category: 'ACC' },
+    { keyword: 'SOCKS', category: 'ACC' },
+    { keyword: 'GLOVE', category: 'ACC' },
+    { keyword: 'WALLET', category: 'ACC' },
+    { keyword: 'ACCESSORY', category: 'ACC' },
+    { keyword: 'ACC', category: 'ACC' }
+  ];
+  
+  // 규칙에 따라 매칭
+  for (const rule of categoryRules) {
+    if (upperTitle.includes(rule.keyword)) {
+      return rule.category;
+    }
+  }
+  
+  return ''; // 매칭 안되면 빈값
+};
+
 export const loader = async ({ request }) => {
   // CORS preflight 요청 처리
   if (request.method === "OPTIONS") {
@@ -180,75 +279,6 @@ export const loader = async ({ request }) => {
       return { customerName, accountCode };
     };
 
-    // Fabric 카테고리 추출 함수
-    const extractFabricFromTitleAndTags = (item) => {
-      // 1. 먼저 product tags에서 확인 (SHOES, BAG은 태그 우선)
-      if (item.variant?.product?.tags) {
-        const productTags = item.variant.product.tags.map(tag => tag.toLowerCase());
-        
-        // shoes 태그 확인
-        if (productTags.includes('shoes')) {
-          return 'SHOES';
-        }
-        
-        // bag 태그 확인
-        if (productTags.includes('bag')) {
-          return 'BAG';
-        }
-      }
-      
-      // 2. 태그에 없으면 상품명에서 추출
-      const title = item.title || item.variant?.product?.title || '';
-      if (!title) return '';
-      
-      const upperTitle = title.toUpperCase();
-      
-      // 카테고리 매칭 규칙 (순서 중요!)
-      const categoryRules = [
-        // 구체적인 카테고리부터 먼저 체크
-        { keyword: 'LONG TEE', category: 'LONG TEE' },
-        { keyword: 'CARDIGAN', category: 'CARDIGAN' },
-        { keyword: 'JUMPER', category: 'JUMPER' },
-        { keyword: 'JACKET', category: 'JACKET' },
-        { keyword: 'DENIM', category: 'DENIM' },
-        { keyword: 'COAT', category: 'COAT' },
-        { keyword: 'DRESS', category: 'DRESS' },
-        { keyword: 'VEST', category: 'VEST' },
-        { keyword: 'SKIRT', category: 'SKIRT' },
-        { keyword: 'PANTS', category: 'PANTS' },
-        { keyword: 'SHIRT', category: 'SHIRTS' },
-        { keyword: 'KNIT', category: 'KNIT' },
-        { keyword: 'TOP', category: 'TOP' },
-        
-        // Outwear/Bottom 카테고리 매핑
-        { keyword: 'OUTWEAR', category: 'COAT' },
-        { keyword: 'OUTERWEAR', category: 'COAT' },
-        { keyword: 'BOTTOM', category: 'PANTS' },
-        { keyword: 'TROUSER', category: 'PANTS' },
-        
-        // ACC는 가장 마지막에
-        { keyword: 'HAT', category: 'ACC' },
-        { keyword: 'CAP', category: 'ACC' },
-        { keyword: 'BELT', category: 'ACC' },
-        { keyword: 'SCARF', category: 'ACC' },
-        { keyword: 'TIE', category: 'ACC' },
-        { keyword: 'SOCKS', category: 'ACC' },
-        { keyword: 'GLOVE', category: 'ACC' },
-        { keyword: 'WALLET', category: 'ACC' },
-        { keyword: 'ACCESSORY', category: 'ACC' },
-        { keyword: 'ACC', category: 'ACC' }
-      ];
-      
-      // 규칙에 따라 매칭
-      for (const rule of categoryRules) {
-        if (upperTitle.includes(rule.keyword)) {
-          return rule.category;
-        }
-      }
-      
-      return ''; // 매칭 안되면 빈값
-    };
-
     // CSV 생성
     const csvRows = [];
     
@@ -293,35 +323,6 @@ export const loader = async ({ request }) => {
         }
 
         // Style 추출 - 바코드에서 사이즈 정보 제거
-        const extractStyleFromBarcode = (barcode) => {
-          if (!barcode) return '';
-          
-          // 사이즈 패턴들 (대소문자 구분 없이)
-          const sizePatterns = [
-            // 구체적인 패턴부터
-            /BKXL$/i, /WHXL$/i, /GRXL$/i, /NVXL$/i, /BRXL$/i,
-            /BKXXL$/i, /WHXXL$/i, /GRXXL$/i, /NVXXL$/i, /BRXXL$/i,
-            /BKL$/i, /WHL$/i, /GRL$/i, /NVL$/i, /BRL$/i,
-            /BKM$/i, /WHM$/i, /GRM$/i, /NVM$/i, /BRM$/i,
-            /BKS$/i, /WHS$/i, /GRS$/i, /NVS$/i, /BRS$/i,
-            /BKXS$/i, /WHXS$/i, /GRXS$/i, /NVXS$/i, /BRXS$/i,
-            // 일반적인 사이즈
-            /XXL$/i, /XL$/i, /L$/i, /M$/i, /S$/i, /XS$/i,
-            // 숫자 사이즈
-            /\d{2,3}$/  // 마지막 2-3자리 숫자
-          ];
-          
-          let style = barcode;
-          for (const pattern of sizePatterns) {
-            if (pattern.test(style)) {
-              style = style.replace(pattern, '');
-              break;
-            }
-          }
-          
-          return style;
-        };
-        
         const barcode = item.variant?.barcode || '';
         const style = extractStyleFromBarcode(barcode) || item.variant?.sku || '';
         
@@ -331,6 +332,18 @@ export const loader = async ({ request }) => {
                       '';
 
         console.log(`Style/Barcode extraction - Barcode: ${barcode}, Style: ${style}, Fabric: ${fabric}`);
+
+        csvRows.push([
+          order.name || '',
+          customerName,
+          accountCode,
+          style,
+          fabric,
+          colour || '',
+          size || '',
+          '',  // Barcode 컬럼은 비워둠
+          item.quantity.toString()
+        ]);
       });
     });
 
