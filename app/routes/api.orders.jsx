@@ -7,6 +7,49 @@ if (!PRIVATE_ACCESS_TOKEN) {
   throw new Error("SHOPIFY_PRIVATE_ACCESS_TOKEN is not set");
 }
 
+// Style 코드에서 카테고리 추출 함수
+const extractFabricFromStyle = (styleCode) => {
+  if (!styleCode || styleCode.length < 2) return '';
+  
+  // Style 코드 형식: AM26SSM01VT
+  // 마지막 2글자가 카테고리 코드
+  
+  // Style 코드를 대문자로 변환
+  const upperStyle = styleCode.toUpperCase();
+  
+  // 카테고리 코드 매핑
+  const categoryMap = {
+    'VT': 'VEST',
+    'AC': 'ACC',
+    'TS': 'T-SHIRTS',
+    'PT': 'PANTS',
+    'SH': 'SHIRTS',
+    'KN': 'KNIT',
+    'JP': 'JUMPER',
+    'JK': 'JACKET',
+    'CD': 'CARDIGAN',
+    'DN': 'DENIM',
+    'SK': 'SKIRT',
+    'DR': 'DRESS',
+    'SS': 'SHOES',
+    'BG': 'BAG',
+    'TO': 'TOP',
+    'TL': 'LONG TEE',
+    'CT': 'COAT'
+  };
+  
+  // Style 코드의 마지막 2글자 추출
+  const lastTwo = upperStyle.slice(-2);
+  
+  if (categoryMap[lastTwo]) {
+    console.log(`Found category code ${lastTwo} in style ${styleCode}`);
+    return categoryMap[lastTwo];
+  }
+  
+  console.log(`No category code found in style: ${styleCode}`);
+  return '';
+};
+
 // Style 추출 함수 - 바코드에서 컬러+사이즈 정보 제거
 const extractStyleFromBarcode = (barcode) => {
   if (!barcode) return '';
@@ -63,75 +106,6 @@ const extractStyleFromBarcode = (barcode) => {
   }
   
   return style;
-};
-
-// Fabric 카테고리 추출 함수
-const extractFabricFromTitleAndTags = (item) => {
-  // 1. 먼저 product tags에서 확인 (SHOES, BAG은 태그 우선)
-  if (item.variant?.product?.tags) {
-    const productTags = item.variant.product.tags.map(tag => tag.toLowerCase());
-    
-    // shoes 태그 확인
-    if (productTags.includes('shoes')) {
-      return 'SHOES';
-    }
-    
-    // bag 태그 확인
-    if (productTags.includes('bag')) {
-      return 'BAG';
-    }
-  }
-  
-  // 2. 태그에 없으면 상품명에서 추출
-  const title = item.title || item.variant?.product?.title || '';
-  if (!title) return '';
-  
-  const upperTitle = title.toUpperCase();
-  
-  // 카테고리 매칭 규칙 (순서 중요!)
-  const categoryRules = [
-    // 구체적인 카테고리부터 먼저 체크
-    { keyword: 'LONG TEE', category: 'LONG TEE' },
-    { keyword: 'CARDIGAN', category: 'CARDIGAN' },
-    { keyword: 'JUMPER', category: 'JUMPER' },
-    { keyword: 'JACKET', category: 'JACKET' },
-    { keyword: 'DENIM', category: 'DENIM' },
-    { keyword: 'COAT', category: 'COAT' },
-    { keyword: 'DRESS', category: 'DRESS' },
-    { keyword: 'VEST', category: 'VEST' },
-    { keyword: 'SKIRT', category: 'SKIRT' },
-    { keyword: 'PANTS', category: 'PANTS' },
-    { keyword: 'SHIRT', category: 'SHIRTS' },
-    { keyword: 'KNIT', category: 'KNIT' },
-    { keyword: 'TOP', category: 'TOP' },
-    
-    // Outwear/Bottom 카테고리 매핑
-    { keyword: 'OUTWEAR', category: 'COAT' },
-    { keyword: 'OUTERWEAR', category: 'COAT' },
-    { keyword: 'BOTTOM', category: 'PANTS' },
-    { keyword: 'TROUSER', category: 'PANTS' },
-    
-    // ACC는 가장 마지막에
-    { keyword: 'HAT', category: 'ACC' },
-    { keyword: 'CAP', category: 'ACC' },
-    { keyword: 'BELT', category: 'ACC' },
-    { keyword: 'SCARF', category: 'ACC' },
-    { keyword: 'TIE', category: 'ACC' },
-    { keyword: 'SOCKS', category: 'ACC' },
-    { keyword: 'GLOVE', category: 'ACC' },
-    { keyword: 'WALLET', category: 'ACC' },
-    { keyword: 'ACCESSORY', category: 'ACC' },
-    { keyword: 'ACC', category: 'ACC' }
-  ];
-  
-  // 규칙에 따라 매칭
-  for (const rule of categoryRules) {
-    if (upperTitle.includes(rule.keyword)) {
-      return rule.category;
-    }
-  }
-  
-  return ''; // 매칭 안되면 빈값
 };
 
 export const loader = async ({ request }) => {
@@ -360,10 +334,8 @@ export const loader = async ({ request }) => {
         const sourceCode = sku || barcode;
         const style = sourceCode ? extractStyleFromBarcode(sourceCode) : '';
         
-        // Fabric 추출 - 새로운 함수 사용
-        const fabric = extractFabricFromTitleAndTags(item) || 
-                      item.variant?.product?.productType || 
-                      '';
+        // Fabric 추출 - Style 코드에서 카테고리 추출
+        const fabric = style ? extractFabricFromStyle(style) : '';
 
         console.log(`Final - Source: "${sourceCode}", Style: "${style}", Fabric: "${fabric}"`);
 
