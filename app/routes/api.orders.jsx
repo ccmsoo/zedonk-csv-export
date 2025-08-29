@@ -229,42 +229,47 @@ export const loader = async ({ request }) => {
         console.log(`⚠️ API Rate Limit: ${rateLimitRemaining}`);
       }
       
-      // 응답 본문 파싱
+      // 응답 본문 파싱let responseData;
+try {
+  responseData = JSON.parse(responseText);
+} catch (parseError) {
+  console.error("❌ JSON Parse Error:", parseError);
+  console.error("Raw response (first 500 chars):", responseText.substring(0, 500));
+  errorCount++;
+  continue;
+}
+
+// 전체 응답 구조 확인
+console.log("Full response structure:", JSON.stringify(responseData, null, 2).substring(0, 1000));
+
+if (responseData.errors) {
+  console.error(`❌ Error type: ${typeof responseData.errors}`);
+  console.error(`❌ Error content:`, responseData.errors);
+  
+  // 에러 처리 로직
+  if (Array.isArray(responseData.errors)) {
+    responseData.errors.forEach((error, idx) => {
+      console.error(`  Error ${idx + 1}:`, error.message || error);
+      if (error.extensions) {
+        console.error(`  Extensions:`, JSON.stringify(error.extensions));
+      }
+    });
+  } else if (typeof responseData.errors === 'string') {
+    console.error(`  Error: ${responseData.errors}`);
+  } else {
+    console.error(`  Error:`, JSON.stringify(responseData.errors));
+  }
+  
+  errorCount++;
+  continue;
+}
+
+// 주문 데이터 확인
+const order = responseData?.data?.order;
       const responseText = await response.text();
       console.log(`📄 Response size: ${responseText.length} bytes`);
       
-      let responseData;
-      try {
-        responseData = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error("❌ JSON Parse Error:", parseError);
-        console.error("Raw response (first 500 chars):", responseText.substring(0, 500));
-        errorCount++;
-        continue;
-      }
-      
-      if (responseData.errors) {
-        console.error(`❌ GraphQL Errors for order ${orderId}:`);
-        
-        // errors가 배열인지 확인
-        if (Array.isArray(responseData.errors)) {
-          responseData.errors.forEach((error, idx) => {
-            console.error(`  Error ${idx + 1}:`, error.message || error);
-            if (error.extensions) {
-              console.error(`  Extensions:`, JSON.stringify(error.extensions));
-            }
-          });
-        } else if (typeof responseData.errors === 'string') {
-          // errors가 문자열인 경우
-          console.error(`  Error: ${responseData.errors}`);
-        } else {
-          // errors가 객체인 경우
-          console.error(`  Error:`, JSON.stringify(responseData.errors));
-        }
-        
-        errorCount++;
-        continue;
-      }
+     
       // 주문 데이터 확인
       const order = responseData?.data?.order;
       
@@ -288,15 +293,7 @@ export const loader = async ({ request }) => {
     console.log(`✅ Successful: ${successCount}/${orderIdArray.length}`);
     console.log(`❌ Failed: ${errorCount}/${orderIdArray.length}`);
     console.log(`📦 Orders collected: ${allOrdersData.length}`);
-    // GraphQL 에러 확인 전에 전체 응답 로깅
-console.log("Full response structure:", JSON.stringify(responseData, null, 2).substring(0, 1000));
-
-if (responseData.errors) {
-  console.error(`❌ Error type: ${typeof responseData.errors}`);
-  console.error(`❌ Error content:`, responseData.errors);
-  errorCount++;
-  continue;
-}
+    
     
 
     if (allOrdersData.length === 0) {
