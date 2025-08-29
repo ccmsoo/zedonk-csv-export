@@ -20,7 +20,7 @@ if (DEBUG) {
   console.log("Shop domain:", SHOP_DOMAIN);
 }
 
-// Style 코드에서 카테고리 추출 함수 (변경 없음)
+// Style 코드에서 카테고리 추출 함수
 const extractFabricFromStyle = (styleCode) => {
   if (!styleCode || styleCode.length < 2) return '';
   const upperStyle = styleCode.toUpperCase();
@@ -56,7 +56,7 @@ const extractFabricFromStyle = (styleCode) => {
   return '';
 };
 
-// Style 추출 함수 (변경 없음)
+// Style 추출 함수
 const extractStyleFromBarcode = (barcode) => {
   if (!barcode) return '';
   
@@ -229,47 +229,45 @@ export const loader = async ({ request }) => {
         console.log(`⚠️ API Rate Limit: ${rateLimitRemaining}`);
       }
       
-      // 응답 본문 파싱let responseData;
-try {
-  responseData = JSON.parse(responseText);
-} catch (parseError) {
-  console.error("❌ JSON Parse Error:", parseError);
-  console.error("Raw response (first 500 chars):", responseText.substring(0, 500));
-  errorCount++;
-  continue;
-}
-
-// 전체 응답 구조 확인
-console.log("Full response structure:", JSON.stringify(responseData, null, 2).substring(0, 1000));
-
-if (responseData.errors) {
-  console.error(`❌ Error type: ${typeof responseData.errors}`);
-  console.error(`❌ Error content:`, responseData.errors);
-  
-  // 에러 처리 로직
-  if (Array.isArray(responseData.errors)) {
-    responseData.errors.forEach((error, idx) => {
-      console.error(`  Error ${idx + 1}:`, error.message || error);
-      if (error.extensions) {
-        console.error(`  Extensions:`, JSON.stringify(error.extensions));
-      }
-    });
-  } else if (typeof responseData.errors === 'string') {
-    console.error(`  Error: ${responseData.errors}`);
-  } else {
-    console.error(`  Error:`, JSON.stringify(responseData.errors));
-  }
-  
-  errorCount++;
-  continue;
-}
-
-// 주문 데이터 확인
-const order = responseData?.data?.order;
+      // 응답 본문 파싱
       const responseText = await response.text();
       console.log(`📄 Response size: ${responseText.length} bytes`);
       
-     
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("❌ JSON Parse Error:", parseError);
+        console.error("Raw response (first 500 chars):", responseText.substring(0, 500));
+        errorCount++;
+        continue;
+      }
+      
+      // 전체 응답 구조 확인
+      console.log("Full response structure:", JSON.stringify(responseData, null, 2).substring(0, 1000));
+      
+      if (responseData.errors) {
+        console.error(`❌ Error type: ${typeof responseData.errors}`);
+        console.error(`❌ Error content:`, responseData.errors);
+        
+        // 에러 처리 로직
+        if (Array.isArray(responseData.errors)) {
+          responseData.errors.forEach((error, idx) => {
+            console.error(`  Error ${idx + 1}:`, error.message || error);
+            if (error.extensions) {
+              console.error(`  Extensions:`, JSON.stringify(error.extensions));
+            }
+          });
+        } else if (typeof responseData.errors === 'string') {
+          console.error(`  Error: ${responseData.errors}`);
+        } else {
+          console.error(`  Error:`, JSON.stringify(responseData.errors));
+        }
+        
+        errorCount++;
+        continue;
+      }
+      
       // 주문 데이터 확인
       const order = responseData?.data?.order;
       
@@ -293,8 +291,6 @@ const order = responseData?.data?.order;
     console.log(`✅ Successful: ${successCount}/${orderIdArray.length}`);
     console.log(`❌ Failed: ${errorCount}/${orderIdArray.length}`);
     console.log(`📦 Orders collected: ${allOrdersData.length}`);
-    
-    
 
     if (allOrdersData.length === 0) {
       console.error("❌ No orders were successfully retrieved");
@@ -316,17 +312,17 @@ const order = responseData?.data?.order;
     }
 
     // 고객 정보 추출 함수 (깨진 텍스트 처리 개선)
-    const extractCustomerInfo = (order) => {
+    const extractCustomerInfo = (orderData) => {
       let customerName = '';
       let accountCode = '';
       
       if (DEBUG) {
-        console.log(`\n🔍 Extracting customer info for order: ${order.name}`);
+        console.log(`\n🔍 Extracting customer info for order: ${orderData.name}`);
       }
       
       // 1. Custom Attributes에서 찾기
-      if (order.customAttributes && order.customAttributes.length > 0) {
-        order.customAttributes.forEach(attr => {
+      if (orderData.customAttributes && orderData.customAttributes.length > 0) {
+        orderData.customAttributes.forEach(attr => {
           if (DEBUG) console.log(`  Attribute: ${attr.key} = ${attr.value}`);
           if (attr.key === 'Customer Name' || attr.key === 'customer_name') {
             customerName = attr.value;
@@ -338,11 +334,11 @@ const order = responseData?.data?.order;
       }
       
       // 2. Order Note에서 파싱 (깨진 텍스트 처리)
-      if (order.note) {
+      if (orderData.note) {
         if (DEBUG) {
-          console.log(`  Note preview (first 200 chars): ${order.note.substring(0, 200)}`);
+          console.log(`  Note preview (first 200 chars): ${orderData.note.substring(0, 200)}`);
           // 문자 코드 확인
-          const firstChars = order.note.substring(0, 20).split('').map(c => c.charCodeAt(0));
+          const firstChars = orderData.note.substring(0, 20).split('').map(c => c.charCodeAt(0));
           console.log(`  Character codes: ${firstChars.join(', ')}`);
         }
         
@@ -356,7 +352,7 @@ const order = responseData?.data?.order;
         
         if (!customerName) {
           for (const pattern of patterns) {
-            const match = order.note.match(pattern);
+            const match = orderData.note.match(pattern);
             if (match) {
               customerName = match[1].trim().replace(/[â€™""]/g, '');
               if (DEBUG) console.log(`  Found name with pattern: ${customerName}`);
@@ -367,7 +363,7 @@ const order = responseData?.data?.order;
         
         // Account Code 추출
         if (!accountCode) {
-          const codeMatch = order.note.match(/Account Code:\s*(\d+)/);
+          const codeMatch = orderData.note.match(/Account Code:\s*(\d+)/);
           if (codeMatch) {
             accountCode = codeMatch[1].trim();
             if (DEBUG) console.log(`  Found account code: ${accountCode}`);
@@ -406,14 +402,14 @@ const order = responseData?.data?.order;
     let totalLineItems = 0;
 
     // 모든 주문의 라인 아이템 처리
-    allOrdersData.forEach((order, orderIndex) => {
-      const { customerName, accountCode } = extractCustomerInfo(order);
+    allOrdersData.forEach((orderData, orderIndex) => {
+      const { customerName, accountCode } = extractCustomerInfo(orderData);
       
       if (DEBUG && orderIndex === 0) {
-        console.log(`\n📦 Sample order processing: ${order.name}`);
+        console.log(`\n📦 Sample order processing: ${orderData.name}`);
       }
       
-      order.lineItems.edges.forEach(({ node: item }, itemIndex) => {
+      orderData.lineItems.edges.forEach(({ node: item }, itemIndex) => {
         totalLineItems++;
         
         if (DEBUG && orderIndex === 0 && itemIndex === 0) {
@@ -452,7 +448,7 @@ const order = responseData?.data?.order;
         const fabric = style ? extractFabricFromStyle(style) : '';
 
         csvRows.push([
-          order.name || '',
+          orderData.name || '',
           customerName,
           accountCode,
           style,
