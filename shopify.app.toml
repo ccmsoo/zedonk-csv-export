@@ -23,7 +23,7 @@ api_version = "2025-04"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products"
+scopes = "write_products,read_orders,read_customers"
 
 [auth]
 redirect_urls = ["https://loading-bacteria-above-vatican.trycloudflare.com/auth/callback", "https://loading-bacteria-above-vatican.trycloudflare.com/auth/shopify/callback", "https://loading-bacteria-above-vatican.trycloudflare.com/api/auth/callback"]

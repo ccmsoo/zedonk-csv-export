@@ -3,21 +3,28 @@ import { json } from "@remix-run/node";
 const PRIVATE_ACCESS_TOKEN = process.env.SHOPIFY_PRIVATE_ACCESS_TOKEN;
 const SHOP_DOMAIN = "cpnmmm-wb.myshopify.com";
 
+// 디버깅 모드 활성화
+const DEBUG = true;
+
 if (!PRIVATE_ACCESS_TOKEN) {
+  console.error("❌ SHOPIFY_PRIVATE_ACCESS_TOKEN is not set!");
   throw new Error("SHOPIFY_PRIVATE_ACCESS_TOKEN is not set");
 }
 
-// Style 코드에서 카테고리 추출 함수
+// 환경 변수 검증
+if (DEBUG) {
+  console.log("=== Environment Check ===");
+  console.log("Token exists:", !!PRIVATE_ACCESS_TOKEN);
+  console.log("Token format:", PRIVATE_ACCESS_TOKEN?.startsWith('shpat_') ? 'Valid format' : 'Invalid format');
+  console.log("Token length:", PRIVATE_ACCESS_TOKEN?.length);
+  console.log("Shop domain:", SHOP_DOMAIN);
+}
+
+// Style 코드에서 카테고리 추출 함수 (변경 없음)
 const extractFabricFromStyle = (styleCode) => {
   if (!styleCode || styleCode.length < 2) return '';
-  
-  // Style 코드 형식: AM26SSM01VT
-  // 마지막 2글자가 카테고리 코드
-  
-  // Style 코드를 대문자로 변환
   const upperStyle = styleCode.toUpperCase();
   
-  // 카테고리 코드 매핑
   const categoryMap = {
     'VT': 'VEST',
     'AC': 'ACC',
@@ -38,35 +45,31 @@ const extractFabricFromStyle = (styleCode) => {
     'CT': 'COAT'
   };
   
-  // Style 코드의 마지막 2글자 추출
   const lastTwo = upperStyle.slice(-2);
   
   if (categoryMap[lastTwo]) {
-    console.log(`Found category code ${lastTwo} in style ${styleCode}`);
+    if (DEBUG) console.log(`Found category code ${lastTwo} in style ${styleCode}`);
     return categoryMap[lastTwo];
   }
   
-  console.log(`No category code found in style: ${styleCode}`);
+  if (DEBUG) console.log(`No category code found in style: ${styleCode}`);
   return '';
 };
 
-// Style 추출 함수 - 바코드에서 컬러+사이즈 정보 제거
+// Style 추출 함수 (변경 없음)
 const extractStyleFromBarcode = (barcode) => {
   if (!barcode) return '';
   
-  let style = barcode.toUpperCase(); // 대문자로 통일
+  let style = barcode.toUpperCase();
   
-  // 1. OS 사이즈 체크 (ONE SIZE)
   if (style.endsWith('OS')) {
     style = style.substring(0, style.length - 2);
-    // 컬러 코드(2글자)도 제거
     if (style.length >= 2) {
       style = style.substring(0, style.length - 2);
     }
     return style;
   }
   
-  // 2. 의류 사이즈 체크 (XXXL, XXL, XL, L, M, S, XS, XXS)
   const clothingSizes = ['XXXL', 'XXL', 'XL', 'L', 'M', 'S', 'XS', 'XXS'];
   
   for (const size of clothingSizes) {
@@ -79,7 +82,6 @@ const extractStyleFromBarcode = (barcode) => {
     }
   }
   
-  // 3. 신발 사이즈 체크 (220-300)
   const shoeSizes = [];
   for (let i = 220; i <= 300; i += 5) {
     shoeSizes.push(i.toString());
@@ -95,7 +97,6 @@ const extractStyleFromBarcode = (barcode) => {
     }
   }
   
-  // 4. 한 자리 숫자 사이즈 체크
   const lastChar = style.charAt(style.length - 1);
   if (/^\d$/.test(lastChar)) {
     style = style.substring(0, style.length - 1);
@@ -109,8 +110,14 @@ const extractStyleFromBarcode = (barcode) => {
 };
 
 export const loader = async ({ request }) => {
+  console.log("\n🔄 === NEW REQUEST STARTED ===");
+  console.log(`📅 Time: ${new Date().toISOString()}`);
+  console.log(`🌐 Request URL: ${request.url}`);
+  console.log(`📋 Method: ${request.method}`);
+  
   // CORS preflight 요청 처리
   if (request.method === "OPTIONS") {
+    console.log("✅ Handling OPTIONS request");
     return new Response(null, {
       status: 204,
       headers: {
@@ -123,11 +130,13 @@ export const loader = async ({ request }) => {
   }
 
   try {
-    // URL 파라미터에서 order IDs 가져오기
     const url = new URL(request.url);
     const orderIds = url.searchParams.get('ids');
     
+    console.log(`📦 Order IDs received: ${orderIds}`);
+    
     if (!orderIds) {
+      console.error("❌ No order IDs provided in request");
       return json({ error: "Order IDs are required" }, { 
         status: 400,
         headers: {
@@ -137,15 +146,25 @@ export const loader = async ({ request }) => {
     }
 
     const orderIdArray = orderIds.split(',').filter(id => id.trim());
-    console.log("Processing orders:", orderIdArray);
+    console.log(`📊 Order IDs parsed: ${JSON.stringify(orderIdArray)}`);
+    console.log(`📊 Total orders to process: ${orderIdArray.length}`);
 
+    // API 엔드포인트 확인
     const graphqlEndpoint = `https://${SHOP_DOMAIN}/admin/api/2024-01/graphql.json`;
+    console.log(`🔗 GraphQL Endpoint: ${graphqlEndpoint}`);
     
-    // 모든 주문 데이터를 저장할 배열
     const allOrdersData = [];
+    let successCount = 0;
+    let errorCount = 0;
 
     // 각 주문에 대해 GraphQL 쿼리 실행
-    for (const orderId of orderIdArray) {
+    for (let index = 0; index < orderIdArray.length; index++) {
+      const orderId = orderIdArray[index].trim();
+      console.log(`\n🔍 [${index + 1}/${orderIdArray.length}] Processing order: ${orderId}`);
+      
+      const gid = `gid://shopify/Order/${orderId}`;
+      console.log(`🆔 GraphQL ID: ${gid}`);
+      
       const graphqlQuery = {
         query: `
           query getOrder($id: ID!) {
@@ -184,11 +203,13 @@ export const loader = async ({ request }) => {
           }
         `,
         variables: {
-          id: `gid://shopify/Order/${orderId.trim()}`
+          id: gid
         }
       };
 
-      console.log(`Fetching order ${orderId}...`);
+      console.log("📤 Sending GraphQL request...");
+      
+      const startTime = Date.now();
       const response = await fetch(graphqlEndpoint, {
         method: 'POST',
         headers: {
@@ -197,23 +218,80 @@ export const loader = async ({ request }) => {
         },
         body: JSON.stringify(graphqlQuery),
       });
-
-      const responseData = await response.json();
+      const responseTime = Date.now() - startTime;
       
-      if (responseData.errors) {
-        console.error(`GraphQL errors for order ${orderId}:`, responseData.errors);
-        continue; // 에러가 있는 주문은 건너뛰고 계속 진행
+      console.log(`📡 Response received in ${responseTime}ms`);
+      console.log(`📡 Status: ${response.status} ${response.statusText}`);
+      
+      // 응답 헤더 디버깅
+      const rateLimitRemaining = response.headers.get('X-Shopify-Shop-Api-Call-Limit');
+      if (rateLimitRemaining) {
+        console.log(`⚠️ API Rate Limit: ${rateLimitRemaining}`);
       }
       
+      // 응답 본문 파싱
+      const responseText = await response.text();
+      console.log(`📄 Response size: ${responseText.length} bytes`);
+      
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("❌ JSON Parse Error:", parseError);
+        console.error("Raw response (first 500 chars):", responseText.substring(0, 500));
+        errorCount++;
+        continue;
+      }
+      
+      // GraphQL 에러 확인
+      if (responseData.errors) {
+        console.error(`❌ GraphQL Errors for order ${orderId}:`);
+        responseData.errors.forEach((error, idx) => {
+          console.error(`  Error ${idx + 1}:`, error.message);
+          if (error.extensions) {
+            console.error(`  Extensions:`, JSON.stringify(error.extensions));
+          }
+        });
+        errorCount++;
+        continue;
+      }
+      
+      // 주문 데이터 확인
       const order = responseData?.data?.order;
       
       if (order) {
+        console.log(`✅ Order found: ${order.name}`);
+        console.log(`  - Has note: ${!!order.note}`);
+        console.log(`  - Line items count: ${order.lineItems.edges.length}`);
+        console.log(`  - Tags: ${order.tags || 'none'}`);
+        console.log(`  - Custom attributes: ${order.customAttributes?.length || 0}`);
+        
         allOrdersData.push(order);
+        successCount++;
+      } else {
+        console.error(`⚠️ No order data in response for ID: ${orderId}`);
+        console.log("Response structure:", JSON.stringify(responseData, null, 2).substring(0, 500));
+        errorCount++;
       }
     }
 
+    console.log(`\n📊 === PROCESSING SUMMARY ===`);
+    console.log(`✅ Successful: ${successCount}/${orderIdArray.length}`);
+    console.log(`❌ Failed: ${errorCount}/${orderIdArray.length}`);
+    console.log(`📦 Orders collected: ${allOrdersData.length}`);
+
     if (allOrdersData.length === 0) {
-      return json({ error: "No orders found" }, { 
+      console.error("❌ No orders were successfully retrieved");
+      return json({ 
+        error: "No orders found",
+        debug: {
+          requested: orderIdArray.length,
+          successful: successCount,
+          failed: errorCount,
+          tokenValid: !!PRIVATE_ACCESS_TOKEN,
+          shopDomain: SHOP_DOMAIN
+        }
+      }, { 
         status: 404,
         headers: {
           "Access-Control-Allow-Origin": "*",
@@ -221,14 +299,19 @@ export const loader = async ({ request }) => {
       });
     }
 
-    // 고객 정보 추출 함수
+    // 고객 정보 추출 함수 (깨진 텍스트 처리 개선)
     const extractCustomerInfo = (order) => {
       let customerName = '';
       let accountCode = '';
       
+      if (DEBUG) {
+        console.log(`\n🔍 Extracting customer info for order: ${order.name}`);
+      }
+      
       // 1. Custom Attributes에서 찾기
       if (order.customAttributes && order.customAttributes.length > 0) {
         order.customAttributes.forEach(attr => {
+          if (DEBUG) console.log(`  Attribute: ${attr.key} = ${attr.value}`);
           if (attr.key === 'Customer Name' || attr.key === 'customer_name') {
             customerName = attr.value;
           }
@@ -238,39 +321,41 @@ export const loader = async ({ request }) => {
         });
       }
       
-      // 2. Order Note에서 파싱
+      // 2. Order Note에서 파싱 (깨진 텍스트 처리)
       if (order.note) {
-        // 고객명 추출: "고객명: XXX" 패턴
+        if (DEBUG) {
+          console.log(`  Note preview (first 200 chars): ${order.note.substring(0, 200)}`);
+          // 문자 코드 확인
+          const firstChars = order.note.substring(0, 20).split('').map(c => c.charCodeAt(0));
+          console.log(`  Character codes: ${firstChars.join(', ')}`);
+        }
+        
+        // 여러 패턴 시도
+        const patterns = [
+          /고객명:\s*([^\n]+)/,
+          /ê³\s*ê°[^:]*:\s*([^\n]+)/,  // 깨진 텍스트
+          /Customer Name:\s*([^\n]+)/i,
+          /\.{3}\s*([^\n]+)$/m  // "..." 뒤의 이름
+        ];
+        
         if (!customerName) {
-          const nameMatch = order.note.match(/고객명:\s*([^\n]+)/);
-          if (nameMatch) {
-            customerName = nameMatch[1].trim();
+          for (const pattern of patterns) {
+            const match = order.note.match(pattern);
+            if (match) {
+              customerName = match[1].trim().replace(/[â€™""]/g, '');
+              if (DEBUG) console.log(`  Found name with pattern: ${customerName}`);
+              break;
+            }
           }
         }
         
-        // Account Code 추출: "Account Code: XXX" 패턴
+        // Account Code 추출
         if (!accountCode) {
-          const codeMatch = order.note.match(/Account Code:\s*([^\n]+)/);
+          const codeMatch = order.note.match(/Account Code:\s*(\d+)/);
           if (codeMatch) {
             accountCode = codeMatch[1].trim();
+            if (DEBUG) console.log(`  Found account code: ${accountCode}`);
           }
-        }
-        
-        // 대체 패턴들 시도
-        if (!customerName) {
-          const altNameMatch = order.note.match(/Customer:\s*([^\n]+)/i);
-          if (altNameMatch) {
-            customerName = altNameMatch[1].trim();
-          }
-        }
-      }
-      
-      // 3. Tags에서 찾기
-      if (!customerName && order.tags) {
-        const tags = order.tags.split(',').map(tag => tag.trim());
-        const customerTag = tags.find(tag => tag.toLowerCase().startsWith('customer:'));
-        if (customerTag) {
-          customerName = customerTag.substring(9).replace(/_/g, ' ').trim();
         }
       }
       
@@ -278,10 +363,15 @@ export const loader = async ({ request }) => {
       if (customerName === 'N/A') customerName = '';
       if (accountCode === 'N/A') accountCode = '';
       
+      if (DEBUG) {
+        console.log(`  📌 Final - Name: "${customerName}", Code: "${accountCode}"`);
+      }
+      
       return { customerName, accountCode };
     };
 
     // CSV 생성
+    console.log("\n📝 Generating CSV...");
     const csvRows = [];
     
     // Zedonk 형식 헤더
@@ -297,15 +387,31 @@ export const loader = async ({ request }) => {
       "Sales Order Quantity"
     ]);
 
+    let totalLineItems = 0;
+
     // 모든 주문의 라인 아이템 처리
-    allOrdersData.forEach(order => {
+    allOrdersData.forEach((order, orderIndex) => {
       const { customerName, accountCode } = extractCustomerInfo(order);
       
-      order.lineItems.edges.forEach(({ node: item }) => {
+      if (DEBUG && orderIndex === 0) {
+        console.log(`\n📦 Sample order processing: ${order.name}`);
+      }
+      
+      order.lineItems.edges.forEach(({ node: item }, itemIndex) => {
+        totalLineItems++;
+        
+        if (DEBUG && orderIndex === 0 && itemIndex === 0) {
+          console.log(`  📄 Sample line item:`, {
+            title: item.title,
+            quantity: item.quantity,
+            sku: item.variant?.sku,
+            barcode: item.variant?.barcode
+          });
+        }
+        
         let size = '';
         let colour = '';
         
-        // 옵션에서 Size와 Colour 추출
         if (item.variant?.selectedOptions) {
           item.variant.selectedOptions.forEach(option => {
             const optionName = option.name.toLowerCase();
@@ -317,27 +423,17 @@ export const loader = async ({ request }) => {
           });
         }
 
-        // variant title에서 추가 정보 추출
         if (!size && !colour && item.variant?.title && item.variant.title !== 'Default Title') {
           const parts = item.variant.title.split(' / ');
           if (parts.length >= 1 && !size) size = parts[0].trim();
           if (parts.length >= 2 && !colour) colour = parts[1].trim();
         }
 
-        // Style 추출 - SKU 또는 바코드에서 사이즈 정보 제거
         const sku = item.variant?.sku || '';
         const barcode = item.variant?.barcode || '';
-        
-        console.log(`Debug - SKU: "${sku}", Barcode: "${barcode}"`);
-        
-        // SKU가 있으면 SKU에서, 없으면 바코드에서 추출
         const sourceCode = sku || barcode;
         const style = sourceCode ? extractStyleFromBarcode(sourceCode) : '';
-        
-        // Fabric 추출 - Style 코드에서 카테고리 추출
         const fabric = style ? extractFabricFromStyle(style) : '';
-
-        console.log(`Final - Source: "${sourceCode}", Style: "${style}", Fabric: "${fabric}"`);
 
         csvRows.push([
           order.name || '',
@@ -347,11 +443,15 @@ export const loader = async ({ request }) => {
           fabric,
           colour || '',
           size || '',
-          '',  // Barcode 컬럼은 비워둠
+          '',
           item.quantity.toString()
         ]);
       });
     });
+
+    console.log(`\n📊 CSV Generation Summary:`);
+    console.log(`  - Total rows: ${csvRows.length} (including header)`);
+    console.log(`  - Total line items: ${totalLineItems}`);
 
     // CSV 문자열로 변환
     const csvContent = csvRows
@@ -367,11 +467,13 @@ export const loader = async ({ request }) => {
     const bom = '\ufeff';
     const finalCsv = bom + csvContent;
 
-    console.log(`CSV generated successfully for ${allOrdersData.length} orders`);
-
-    // 파일명에 주문 개수와 날짜 포함
     const date = new Date().toISOString().split('T')[0];
     const filename = `zedonk_orders_${allOrdersData.length}_${date}.csv`;
+
+    console.log(`✅ CSV generated successfully`);
+    console.log(`📁 Filename: ${filename}`);
+    console.log(`📏 File size: ${finalCsv.length} bytes`);
+    console.log("✨ === REQUEST COMPLETED ===\n");
 
     return new Response(finalCsv, {
       status: 200,
@@ -386,10 +488,21 @@ export const loader = async ({ request }) => {
     });
 
   } catch (error) {
-    console.error("API Error:", error);
+    console.error("\n💥 === FATAL ERROR ===");
+    console.error("Error type:", error.constructor.name);
+    console.error("Error message:", error.message);
     console.error("Error stack:", error.stack);
+    
     return json(
-      { error: "Internal server error", details: error.message },
+      { 
+        error: "Internal server error", 
+        details: error.message,
+        debug: {
+          errorType: error.constructor.name,
+          tokenExists: !!PRIVATE_ACCESS_TOKEN,
+          shopDomain: SHOP_DOMAIN
+        }
+      },
       { 
         status: 500,
         headers: {
