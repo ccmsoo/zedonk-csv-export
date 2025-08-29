@@ -243,19 +243,28 @@ export const loader = async ({ request }) => {
         continue;
       }
       
-      // GraphQL 에러 확인
       if (responseData.errors) {
         console.error(`❌ GraphQL Errors for order ${orderId}:`);
-        responseData.errors.forEach((error, idx) => {
-          console.error(`  Error ${idx + 1}:`, error.message);
-          if (error.extensions) {
-            console.error(`  Extensions:`, JSON.stringify(error.extensions));
-          }
-        });
+        
+        // errors가 배열인지 확인
+        if (Array.isArray(responseData.errors)) {
+          responseData.errors.forEach((error, idx) => {
+            console.error(`  Error ${idx + 1}:`, error.message || error);
+            if (error.extensions) {
+              console.error(`  Extensions:`, JSON.stringify(error.extensions));
+            }
+          });
+        } else if (typeof responseData.errors === 'string') {
+          // errors가 문자열인 경우
+          console.error(`  Error: ${responseData.errors}`);
+        } else {
+          // errors가 객체인 경우
+          console.error(`  Error:`, JSON.stringify(responseData.errors));
+        }
+        
         errorCount++;
         continue;
       }
-      
       // 주문 데이터 확인
       const order = responseData?.data?.order;
       
@@ -279,6 +288,16 @@ export const loader = async ({ request }) => {
     console.log(`✅ Successful: ${successCount}/${orderIdArray.length}`);
     console.log(`❌ Failed: ${errorCount}/${orderIdArray.length}`);
     console.log(`📦 Orders collected: ${allOrdersData.length}`);
+    // GraphQL 에러 확인 전에 전체 응답 로깅
+console.log("Full response structure:", JSON.stringify(responseData, null, 2).substring(0, 1000));
+
+if (responseData.errors) {
+  console.error(`❌ Error type: ${typeof responseData.errors}`);
+  console.error(`❌ Error content:`, responseData.errors);
+  errorCount++;
+  continue;
+}
+    
 
     if (allOrdersData.length === 0) {
       console.error("❌ No orders were successfully retrieved");
