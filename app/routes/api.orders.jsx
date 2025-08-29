@@ -1,5 +1,7 @@
 import { json } from "@remix-run/node";
-import { authenticate } from "../shopify.server";
+
+const PRIVATE_ACCESS_TOKEN = process.env.SHOPIFY_PRIVATE_ACCESS_TOKEN;
+const SHOP_DOMAIN = "cpnmmm-wb.myshopify.com";
 
 // 디버깅 모드 활성화
 const DEBUG = true;
@@ -99,6 +101,17 @@ export const loader = async ({ request }) => {
   console.log(`🌐 Request URL: ${request.url}`);
   console.log(`📋 Method: ${request.method}`);
   
+  // HEAD 요청 처리
+  if (request.method === "HEAD") {
+    return new Response(null, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
+  
   // CORS preflight 요청 처리
   if (request.method === "OPTIONS") {
     console.log("✅ Handling OPTIONS request");
@@ -106,24 +119,28 @@ export const loader = async ({ request }) => {
       status: 204,
       headers: {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS, HEAD",
         "Access-Control-Allow-Headers": "Content-Type, Accept",
         "Access-Control-Max-Age": "86400",
       },
     });
   }
 
-  try {
-    // Shopify 인증
-    const { admin, session } = await authenticate.admin(request);
-    
-    if (DEBUG) {
-      console.log("=== Authentication Check ===");
-      console.log("Session exists:", !!session);
-      console.log("Admin client exists:", !!admin);
-      console.log("Shop domain:", session?.shop);
-    }
+  if (!PRIVATE_ACCESS_TOKEN) {
+    console.error("❌ SHOPIFY_PRIVATE_ACCESS_TOKEN is not set!");
+    throw new Error("SHOPIFY_PRIVATE_ACCESS_TOKEN is not set");
+  }
 
+  // 환경 변수 검증
+  if (DEBUG) {
+    console.log("=== Environment Check ===");
+    console.log("Token exists:", !!PRIVATE_ACCESS_TOKEN);
+    console.log("Token format:", PRIVATE_ACCESS_TOKEN?.startsWith('shpat_') ? 'Valid format' : 'Invalid format');
+    console.log("Token length:", PRIVATE_ACCESS_TOKEN?.length);
+    console.log("Shop domain:", SHOP_DOMAIN);
+  }
+
+  try {
     const url = new URL(request.url);
     const orderIds = url.searchParams.get('ids');
     
@@ -142,6 +159,10 @@ export const loader = async ({ request }) => {
     const orderIdArray = orderIds.split(',').filter(id => id.trim());
     console.log(`📊 Order IDs parsed: ${JSON.stringify(orderIdArray)}`);
     console.log(`📊 Total orders to process: ${orderIdArray.length}`);
+
+    // API 엔드포인트 확인
+    const graphqlEndpoint = `https://${SHOP_DOMAIN}/admin/api/2024-01/graphql.json`;
+    console.log(`🔗 GraphQL Endpoint: ${graphqlEndpoint}`);
     
     const allOrdersData = [];
     let successCount = 0;
@@ -154,14 +175,9 @@ export const loader = async ({ request }) => {
       
       const gid = `gid://shopify/Order/${orderId}`;
       console.log(`🆔 GraphQL ID: ${gid}`);
-
-      console.log("📤 Sending GraphQL request...");
       
-      const startTime = Date.now();
-      
-      try {
-        const response = await admin.graphql(
-          `#graphql
+      const graphqlQuery = {
+        query: `
           query getOrder($id: ID!) {
             order(id: $id) {
               name
@@ -195,49 +211,90 @@ export const loader = async ({ request }) => {
                 }
               }
             }
-          }`,
-          {
-            variables: {
-              id: gid
-            },
           }
-        );
-        
-        const responseTime = Date.now() - startTime;
-        console.log(`📡 Response received in ${responseTime}ms`);
-        
-        const responseData = await response.json();
-        
-        // 전체 응답 구조 확인
-        console.log("Full response structure:", JSON.stringify(responseData, null, 2).substring(0, 1000));
-        
-        if (responseData.errors) {
-          console.error(`❌ GraphQL Errors for order ${orderId}:`);
-          console.error(responseData.errors);
-          errorCount++;
-          continue;
+        `,
+        variables: {
+          id: gid
         }
-        
-        // 주문 데이터 확인
-        const order = responseData?.data?.order;
-        
-        if (order) {
-          console.log(`✅ Order found: ${order.name}`);
-          console.log(`  - Has note: ${!!order.note}`);
-          console.log(`  - Line items count: ${order.lineItems.edges.length}`);
-          console.log(`  - Tags: ${order.tags || 'none'}`);
-          console.log(`  - Custom attributes: ${order.customAttributes?.length || 0}`);
-          
-          allOrdersData.push(order);
-          successCount++;
-        } else {
-          console.error(`⚠️ No order data in response for ID: ${orderId}`);
-          errorCount++;
-        }
-      } catch (queryError) {
-        console.error(`❌ Query error for order ${orderId}:`, queryError);
+      };
+
+      console.log("📤 Sending GraphQL request...");
+      
+      const startTime = Date.now();
+      const response = await fetch(graphqlEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': PRIVATE_ACCESS_TOKEN,
+        },
+        body: JSON.stringify(graphqlQuery),
+      });
+      const responseTime = Date.now() - startTime;
+      
+      console.log(`📡 Response received in ${responseTime}ms`);
+      console.log(`📡 Status: ${response.status} ${response.statusText}`);
+      
+      // 응답 헤더 디버깅
+      const rateLimitRemaining = response.headers.get('X-Shopify-Shop-Api-Call-Limit');
+      if (rateLimitRemaining) {
+        console.log(`⚠️ API Rate Limit: ${rateLimitRemaining}`);
+      }
+      
+      // 응답 본문 파싱
+      const responseText = await response.text();
+      console.log(`📄 Response size: ${responseText.length} bytes`);
+      
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("❌ JSON Parse Error:", parseError);
+        console.error("Raw response (first 500 chars):", responseText.substring(0, 500));
         errorCount++;
         continue;
+      }
+      
+      // 전체 응답 구조 확인
+      console.log("Full response structure:", JSON.stringify(responseData, null, 2).substring(0, 1000));
+      
+      if (responseData.errors) {
+        console.error(`❌ Error type: ${typeof responseData.errors}`);
+        console.error(`❌ Error content:`, responseData.errors);
+        
+        // 에러 처리 로직
+        if (Array.isArray(responseData.errors)) {
+          responseData.errors.forEach((error, idx) => {
+            console.error(`  Error ${idx + 1}:`, error.message || error);
+            if (error.extensions) {
+              console.error(`  Extensions:`, JSON.stringify(error.extensions));
+            }
+          });
+        } else if (typeof responseData.errors === 'string') {
+          console.error(`  Error: ${responseData.errors}`);
+        } else {
+          console.error(`  Error:`, JSON.stringify(responseData.errors));
+        }
+        
+        errorCount++;
+        continue;
+      }
+      
+      // 주문 데이터 확인
+      const order = responseData?.data?.order;
+      
+      if (order) {
+        console.log(`✅ Order found: ${order.name}`);
+        console.log(`  - Has note: ${!!order.note}`);
+        console.log(`  - Line items count: ${order.lineItems.edges.length}`);
+        console.log(`  - Tags: ${order.tags || 'none'}`);
+        console.log(`  - Custom attributes: ${order.customAttributes?.length || 0}`);
+        
+        allOrdersData.push(order);
+        successCount++;
+      } else {
+        console.error(`⚠️ No order data in response for ID: ${orderId}`);
+        console.log("Response structure:", JSON.stringify(responseData, null, 2).substring(0, 500));
+        errorCount++;
       }
     }
 
@@ -254,8 +311,8 @@ export const loader = async ({ request }) => {
           requested: orderIdArray.length,
           successful: successCount,
           failed: errorCount,
-          sessionValid: !!session,
-          shopDomain: session?.shop
+          tokenValid: !!PRIVATE_ACCESS_TOKEN,
+          shopDomain: SHOP_DOMAIN
         }
       }, { 
         status: 404,
@@ -448,7 +505,7 @@ export const loader = async ({ request }) => {
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Cache-Control': 'no-cache',
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, HEAD',
         'Access-Control-Allow-Headers': 'Content-Type, Accept',
       },
     });
@@ -464,7 +521,9 @@ export const loader = async ({ request }) => {
         error: "Internal server error", 
         details: error.message,
         debug: {
-          errorType: error.constructor.name
+          errorType: error.constructor.name,
+          tokenExists: !!PRIVATE_ACCESS_TOKEN,
+          shopDomain: SHOP_DOMAIN
         }
       },
       { 
