@@ -131,8 +131,8 @@ const findPriceForItem = (priceMap, productTitle, size) => {
   const exactKey = `${productTitle}_${size}`;
   if (priceMap[exactKey]) {
     return {
-      unitPrice: priceMap[exactKey].unitPrice,
-      amountPerUnit: priceMap[exactKey].unitPrice
+      unitPrice: priceMap[exactKey].totalAmount,    // 🎯 Unit Price = 라인 총액
+      amountPerUnit: priceMap[exactKey].unitPrice   // 🎯 Amount per Unit = 개당 금액
     };
   }
   
@@ -144,8 +144,8 @@ const findPriceForItem = (priceMap, productTitle, size) => {
       // 사이즈도 확인
       if (key.toLowerCase().includes(size.toLowerCase())) {
         return {
-          unitPrice: value.unitPrice,
-          amountPerUnit: value.unitPrice
+          unitPrice: value.totalAmount,    // 🎯 Unit Price = 라인 총액
+          amountPerUnit: value.unitPrice   // 🎯 Amount per Unit = 개당 금액
         };
       }
     }
