@@ -5,20 +5,6 @@ const SHOP_DOMAIN = "cpnmmm-wb.myshopify.com";
 
 const DEBUG = true;
 
-// HTML 엔티티 디코딩 함수
-const decodeHtmlEntities = (str) => {
-  if (!str) return '';
-  return str
-    .replace(/&#39;/g, "'")
-    .replace(/&#x27;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&nbsp;/g, " ");
-};
-
 // Style 코드에서 카테고리 추출
 const extractFabricFromStyle = (styleCode) => {
   if (!styleCode || styleCode.length < 2) return '';
@@ -33,7 +19,6 @@ const extractFabricFromStyle = (styleCode) => {
   
   const lastTwo = upperStyle.slice(-2);
   if (categoryMap[lastTwo]) {
-    if (DEBUG) console.log(`Found category ${lastTwo} in ${styleCode}`);
     return categoryMap[lastTwo];
   }
   
@@ -80,167 +65,43 @@ const extractStyleFromBarcode = (barcode) => {
   return style;
 };
 
-// Order note에서 Currency 추출
-const extractCurrency = (note, customAttributes) => {
-  if (customAttributes?.length > 0) {
-    const currencyAttr = customAttributes.find(attr => 
-      attr.key === 'Currency' || attr.key === 'currency'
-    );
-    if (currencyAttr) return currencyAttr.value.toUpperCase();
-  }
-  
-  if (!note) return 'USD';
-  
-  const decodedNote = decodeHtmlEntities(note);
-  
-  const currencyMatch = decodedNote.match(/통화:\s*(USD|EUR|JPY|KRW|GBP)/i);
-  if (currencyMatch) return currencyMatch[1].toUpperCase();
-  
-  const currencyMatch2 = decodedNote.match(/Currency:\s*(USD|EUR|JPY|KRW|GBP)/i);
-  if (currencyMatch2) return currencyMatch2[1].toUpperCase();
-  
-  if (decodedNote.includes('¥') || decodedNote.includes('Â¥')) return 'JPY';
-  if (decodedNote.includes('€') || decodedNote.includes('â‚¬')) return 'EUR';
-  if (decodedNote.includes('₩')) return 'KRW';
-  if (decodedNote.includes('£')) return 'GBP';
-  
+// 🎯 Customer Tier → Metafield Key 변환
+// 예: "EUR DAP" → "wsp_eur_dap"
+const tierToMetafieldKey = (tier) => {
+  if (!tier) return null;
+  // 소문자 변환 + 공백을 _로 + 앞에 wsp_ 붙이기
+  const key = 'wsp_' + tier.toLowerCase().replace(/\s+/g, '_');
+  return key;
+};
+
+// 🎯 Customer Tier에서 Currency 추출
+// 예: "EUR DAP" → "EUR", "USD EXW" → "USD"
+const getCurrencyFromTier = (tier) => {
+  if (!tier) return 'USD';
+  const upper = tier.toUpperCase();
+  if (upper.includes('EUR')) return 'EUR';
+  if (upper.includes('JPY')) return 'JPY';
+  if (upper.includes('KRW')) return 'KRW';
+  if (upper.includes('GBP')) return 'GBP';
   return 'USD';
 };
 
-// Order note에서 각 상품의 가격 정보 추출
-const extractPriceInfo = (note) => {
-  if (!note) return {};
+// 🎯 Product Metafield에서 가격 추출
+const getPriceFromMetafields = (metafields, metafieldKey) => {
+  if (!metafields?.edges || !metafieldKey) return 0;
   
-  const priceMap = {};
-  
-  // HTML 엔티티 먼저 디코딩
-  const decodedNote = decodeHtmlEntities(note);
-  
-  if (DEBUG) {
-    console.log(`  📝 Decoded note preview: ${decodedNote.substring(0, 300)}`);
-  }
-  
-  let billingSection = null;
-  const sectionPatterns = [
-    'Actual Billing Details:',
-    '실제 청구 내역:',
-    '실제 청구 내역',
-    'ì‹¤ì œ ì²­êµ¬ ë‚´ì—­:'
-  ];
-  
-  for (const pattern of sectionPatterns) {
-    if (decodedNote.includes(pattern)) {
-      billingSection = decodedNote.split(pattern)[1];
-      if (DEBUG) console.log(`  Found section with pattern: "${pattern}"`);
-      break;
+  for (const edge of metafields.edges) {
+    const { namespace, key, value } = edge.node;
+    // namespace가 'custom'이고 key가 일치하는 경우
+    if (namespace === 'custom' && key === metafieldKey) {
+      const price = parseFloat(value) || 0;
+      if (DEBUG) console.log(`    💰 Found metafield price: ${key} = ${price}`);
+      return price;
     }
   }
   
-  if (!billingSection) {
-    if (DEBUG) console.log(`  ⚠️ No billing section found in note`);
-    return priceMap;
-  }
-  
-  const lines = billingSection.split('\n');
-  
-  for (const line of lines) {
-    // 패턴: - 상품명 x 수량 = 통화기호가격
-    const match = line.match(/^-\s*(.+?)\s*x\s*(\d+)\s*=\s*[$€¥₩£]?([\d,]+)/);
-    
-    if (match) {
-      const productName = match[1].trim();
-      const quantity = parseInt(match[2]);
-      const totalAmount = parseInt(match[3].replace(/,/g, ''));
-      const unitPrice = Math.round(totalAmount / quantity);
-      
-      priceMap[productName] = {
-        unitPrice,
-        totalAmount,
-        quantity
-      };
-      
-      if (DEBUG) {
-        console.log(`  💰 Price: "${productName}" -> Unit: ${unitPrice}, Total: ${totalAmount}, Qty: ${quantity}`);
-      }
-    }
-  }
-  
-  if (DEBUG) {
-    console.log(`  📊 Total price entries found: ${Object.keys(priceMap).length}`);
-  }
-  
-  return priceMap;
-};
-
-// 상품명으로 가격 정보 찾기
-const findPriceForItem = (priceMap, itemTitle, variantTitle, size, colour) => {
-  if (!priceMap || Object.keys(priceMap).length === 0) {
-    return { unitPrice: 0, amountPerUnit: 0 };
-  }
-  
-  // HTML 엔티티 디코딩
-  const decodedTitle = decodeHtmlEntities(itemTitle)?.toLowerCase() || '';
-  const decodedColour = decodeHtmlEntities(colour)?.toLowerCase() || '';
-  const decodedVariant = decodeHtmlEntities(variantTitle)?.toLowerCase() || '';
-  
-  if (DEBUG) {
-    console.log(`    🔍 Searching: title="${decodedTitle}", colour="${decodedColour}"`);
-  }
-  
-  // 1. 정확한 매칭 (상품명, 색상 - 색상 / 사이즈 형식)
-  for (const [noteProductName, value] of Object.entries(priceMap)) {
-    const noteLower = noteProductName.toLowerCase();
-    
-    // 패턴: "상품명, 색상 - 색상 / 사이즈" 에서 앞부분만 추출
-    const noteBaseName = noteLower.split(' - ')[0].trim();
-    
-    // 정확히 일치
-    if (noteBaseName === `${decodedTitle}, ${decodedColour}`) {
-      if (DEBUG) console.log(`    ✅ Exact match: "${noteProductName}"`);
-      return {
-        unitPrice: value.totalAmount,
-        amountPerUnit: value.unitPrice
-      };
-    }
-  }
-  
-  // 2. 부분 매칭 (상품명 + 색상 포함)
-  for (const [noteProductName, value] of Object.entries(priceMap)) {
-    const noteLower = noteProductName.toLowerCase();
-    const noteBaseName = noteLower.split(' - ')[0].trim();
-    
-    // 상품명의 첫 부분과 색상이 일치하는지
-    const titleFirstPart = decodedTitle.split(',')[0].trim();
-    
-    if (noteBaseName.includes(titleFirstPart) && noteBaseName.includes(decodedColour)) {
-      if (DEBUG) console.log(`    ✅ Partial match: "${noteProductName}"`);
-      return {
-        unitPrice: value.totalAmount,
-        amountPerUnit: value.unitPrice
-      };
-    }
-  }
-  
-  // 3. 더 느슨한 매칭 (상품명 키워드 + 색상)
-  for (const [noteProductName, value] of Object.entries(priceMap)) {
-    const noteLower = noteProductName.toLowerCase();
-    
-    // 주요 키워드 추출 (coat, pants, shirt 등)
-    const keywords = ['coat', 'pants', 'shirt', 'knit', 'cardigan', 'jumper', 'sweater', 'dress', 'skirt', 'bag', 'top'];
-    
-    for (const keyword of keywords) {
-      if (decodedTitle.includes(keyword) && noteLower.includes(keyword) && noteLower.includes(decodedColour)) {
-        if (DEBUG) console.log(`    ✅ Keyword match (${keyword}): "${noteProductName}"`);
-        return {
-          unitPrice: value.totalAmount,
-          amountPerUnit: value.unitPrice
-        };
-      }
-    }
-  }
-  
-  if (DEBUG) console.log(`    ❌ No price match found`);
-  return { unitPrice: 0, amountPerUnit: 0 };
+  if (DEBUG) console.log(`    ⚠️ Metafield not found: ${metafieldKey}`);
+  return 0;
 };
 
 export const loader = async ({ request }) => {
@@ -293,6 +154,7 @@ export const loader = async ({ request }) => {
     for (const orderId of orderIdArray) {
       const gid = `gid://shopify/Order/${orderId.trim()}`;
       
+      // 🎯 GraphQL에 metafields 추가
       const graphqlQuery = {
         query: `
           query getOrder($id: ID!) {
@@ -322,6 +184,15 @@ export const loader = async ({ request }) => {
                         productType
                         vendor
                         tags
+                        metafields(first: 30) {
+                          edges {
+                            node {
+                              namespace
+                              key
+                              value
+                            }
+                          }
+                        }
                       }
                     }
                   }
@@ -364,6 +235,7 @@ export const loader = async ({ request }) => {
     const extractCustomerInfo = (orderData) => {
       let customerName = '';
       let accountCode = '';
+      let customerTier = '';
       
       if (orderData.customAttributes?.length > 0) {
         orderData.customAttributes.forEach(attr => {
@@ -373,40 +245,22 @@ export const loader = async ({ request }) => {
           if (attr.key === 'Account Code' || attr.key === 'account_code') {
             accountCode = attr.value;
           }
+          if (attr.key === 'Customer Tier' || attr.key === 'customer_tier') {
+            customerTier = attr.value;
+          }
         });
       }
       
-      if (orderData.note) {
-        const decodedNote = decodeHtmlEntities(orderData.note);
-        
-        if (!customerName) {
-          const patterns = [
-            /Customer Name:\s*([^\n]+)/i,
-            /고객명:\s*([^\n]+)/,
-            /ê³ ê°ëª…:\s*([^\n]+)/
-          ];
-          for (const pattern of patterns) {
-            const match = decodedNote.match(pattern);
-            if (match) {
-              customerName = match[1].trim();
-              break;
-            }
-          }
-        }
-        
-        if (!accountCode) {
-          const codeMatch = decodedNote.match(/Account Code:\s*(\d+)/);
-          if (codeMatch) accountCode = codeMatch[1].trim();
-        }
+      // Note에서도 Customer Tier 찾기
+      if (!customerTier && orderData.note) {
+        const tierMatch = orderData.note.match(/Customer Tier:\s*([^\n]+)/i);
+        if (tierMatch) customerTier = tierMatch[1].trim();
       }
       
       if (customerName === 'N/A') customerName = '';
       if (accountCode === 'N/A') accountCode = '';
       
-      // HTML 엔티티 디코딩
-      customerName = decodeHtmlEntities(customerName);
-      
-      return { customerName, accountCode };
+      return { customerName, accountCode, customerTier };
     };
 
     // CSV 생성
@@ -430,16 +284,18 @@ export const loader = async ({ request }) => {
 
     // 각 주문 처리
     allOrdersData.forEach((orderData) => {
-      const { customerName, accountCode } = extractCustomerInfo(orderData);
+      const { customerName, accountCode, customerTier } = extractCustomerInfo(orderData);
       
-      const currency = extractCurrency(orderData.note, orderData.customAttributes);
-      const priceMap = extractPriceInfo(orderData.note);
+      // 🎯 Tier에서 Metafield Key와 Currency 추출
+      const metafieldKey = tierToMetafieldKey(customerTier);
+      const currency = getCurrencyFromTier(customerTier);
       
       if (DEBUG) {
         console.log(`\n📦 Order: ${orderData.name}`);
         console.log(`  Customer: ${customerName}`);
+        console.log(`  Tier: ${customerTier}`);
+        console.log(`  Metafield Key: ${metafieldKey}`);
         console.log(`  Currency: ${currency}`);
-        console.log(`  Price entries: ${Object.keys(priceMap).length}`);
       }
       
       orderData.lineItems.edges.forEach(({ node: item }) => {
@@ -469,17 +325,15 @@ export const loader = async ({ request }) => {
         const style = sourceCode ? extractStyleFromBarcode(sourceCode) : '';
         const fabric = style ? extractFabricFromStyle(style) : '';
 
-        // 가격 정보 찾기
-        const priceInfo = findPriceForItem(
-          priceMap, 
-          item.title,
-          item.variant?.title,
-          size, 
-          colour
+        // 🎯 Product Metafield에서 가격 조회
+        const unitPrice = getPriceFromMetafields(
+          item.variant?.product?.metafields,
+          metafieldKey
         );
+        const totalPrice = unitPrice * item.quantity;
 
-        if (DEBUG && priceInfo.unitPrice === 0) {
-          console.log(`    ⚠️ No price for: ${item.title} (${colour} / ${size})`);
+        if (DEBUG) {
+          console.log(`  📄 ${item.title} (${colour}/${size}) x${item.quantity} = ${unitPrice} each, ${totalPrice} total`);
         }
 
         csvRows.push([
@@ -493,8 +347,8 @@ export const loader = async ({ request }) => {
           '',
           item.quantity.toString(),
           currency,
-          priceInfo.unitPrice.toString(),
-          priceInfo.amountPerUnit.toString()
+          totalPrice.toString(),   // Unit Price = 라인 총액
+          unitPrice.toString()     // Amount per Unit = 개당 가격
         ]);
       });
     });
