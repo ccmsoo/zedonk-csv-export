@@ -153,11 +153,19 @@ export const loader = async ({ request }) => {
 
     for (const orderId of orderIdArray) {
       const gid = `gid://shopify/Order/${orderId.trim()}`;
-      
+
+      // ★ 라인아이템 페이지네이션: 대형 주문(100라인 초과, 예: #1203=134라인)에서
+      //   CSV가 잘리던 문제 수정. 250개씩 커서로 끝까지 수집.
+      let order = null;       // 페이지 누적 결과
+      let liCursor = null;    // lineItems 커서
+      let pageFailed = false;
+
+      while (true) {
+
       // 🎯 GraphQL에 metafields 추가
       const graphqlQuery = {
         query: `
-          query getOrder($id: ID!) {
+          query getOrder($id: ID!, $cursor: String) {
             order(id: $id) {
               name
               note
@@ -166,7 +174,11 @@ export const loader = async ({ request }) => {
                 key
                 value
               }
-              lineItems(first: 100) {
+              lineItems(first: 250, after: $cursor) {
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
                 edges {
                   node {
                     title
@@ -201,7 +213,10 @@ export const loader = async ({ request }) => {
             }
           }
         `,
-        variables: { id: gid }
+        variables: {
+          id: gid,
+          cursor: liCursor
+        }
       };
 
       const response = await fetch(graphqlEndpoint, {
@@ -214,14 +229,42 @@ export const loader = async ({ request }) => {
       });
 
       const responseData = await response.json();
-      
+
       if (responseData.errors) {
         console.error(`GraphQL errors for ${orderId}:`, responseData.errors);
+        pageFailed = true;
+        break;
+      }
+
+      // 주문 데이터 확인 (이번 페이지)
+      const page = responseData?.data?.order;
+
+      if (!page) {
+        console.error(`⚠️ No order data in response for ID: ${orderId}`);
+        pageFailed = true;
+        break;
+      }
+
+      // 첫 페이지면 그대로, 이후 페이지면 라인아이템만 누적
+      if (!order) {
+        order = page;
+      } else {
+        order.lineItems.edges.push(...page.lineItems.edges);
+      }
+
+      const pi = page.lineItems.pageInfo;
+      if (pi && pi.hasNextPage) {
+        liCursor = pi.endCursor;
+        console.log(`  ↻ 라인아이템 추가 페이지 요청... (누적 ${order.lineItems.edges.length}개)`);
         continue;
       }
-      
-      const order = responseData?.data?.order;
-      if (order) allOrdersData.push(order);
+      break;
+      } // while — lineItems 페이지네이션 끝
+
+      if (order && !pageFailed) {
+        console.log(`✅ ${order.name}: 라인아이템 ${order.lineItems.edges.length}개 수집`);
+        allOrdersData.push(order);
+      }
     }
 
     if (allOrdersData.length === 0) {

@@ -32,80 +32,111 @@ export const loader = async ({ request, params }) => {
 
     const graphqlEndpoint = `https://${SHOP_DOMAIN}/admin/api/2024-01/graphql.json`;
     
-    const graphqlQuery = {
-      query: `
-        query getOrder($id: ID!) {
-          order(id: $id) {
-            name
-            note
-            tags
-            customAttributes {
-              key
-              value
-            }
-            lineItems(first: 100) {
-              edges {
-                node {
-                  title
-                  quantity
-                  variant {
-                    sku
-                    barcode
+    // ★ 라인아이템 페이지네이션: 대형 주문(100라인 초과, 예: #1203=134라인)에서
+    //   CSV가 잘리던 문제 수정. 250개씩 커서로 끝까지 수집.
+    let order = null;
+    let liCursor = null;
+
+    while (true) {
+      const graphqlQuery = {
+        query: `
+          query getOrder($id: ID!, $cursor: String) {
+            order(id: $id) {
+              name
+              note
+              tags
+              customAttributes {
+                key
+                value
+              }
+              lineItems(first: 250, after: $cursor) {
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
+                edges {
+                  node {
                     title
-                    selectedOptions {
-                      name
-                      value
-                    }
-                    product {
+                    quantity
+                    variant {
+                      sku
+                      barcode
                       title
-                      productType
-                      vendor
+                      selectedOptions {
+                        name
+                        value
+                      }
+                      product {
+                        title
+                        productType
+                        vendor
+                      }
                     }
                   }
                 }
               }
             }
           }
+        `,
+        variables: {
+          id: `gid://shopify/Order/${orderId}`,
+          cursor: liCursor
         }
-      `,
-      variables: {
-        id: `gid://shopify/Order/${orderId}`
+      };
+
+      console.log("Sending GraphQL request...");
+      const response = await fetch(graphqlEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': PRIVATE_ACCESS_TOKEN,
+        },
+        body: JSON.stringify(graphqlQuery),
+      });
+
+      const responseData = await response.json();
+
+      if (responseData.errors) {
+        console.error("GraphQL errors:", responseData.errors);
+        return json({ error: "GraphQL query failed", details: responseData.errors }, {
+          status: 400,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+          }
+        });
       }
-    };
 
-    console.log("Sending GraphQL request...");
-    const response = await fetch(graphqlEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': PRIVATE_ACCESS_TOKEN,
-      },
-      body: JSON.stringify(graphqlQuery),
-    });
+      const page = responseData?.data?.order;
 
-    const responseData = await response.json();
-    console.log("GraphQL response received:", JSON.stringify(responseData, null, 2));
-    
-    if (responseData.errors) {
-      console.error("GraphQL errors:", responseData.errors);
-      return json({ error: "GraphQL query failed", details: responseData.errors }, { 
-        status: 400,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
+      if (!page) {
+        if (!order) {
+          return json({ error: "Order not found" }, {
+            status: 404,
+            headers: {
+              "Access-Control-Allow-Origin": "*",
+            }
+          });
         }
-      });
+        break;
+      }
+
+      // 첫 페이지면 그대로, 이후 페이지면 라인아이템만 누적
+      if (!order) {
+        order = page;
+      } else {
+        order.lineItems.edges.push(...page.lineItems.edges);
+      }
+
+      const pi = page.lineItems.pageInfo;
+      if (pi && pi.hasNextPage) {
+        liCursor = pi.endCursor;
+        console.log(`  ↻ 라인아이템 추가 페이지 요청... (누적 ${order.lineItems.edges.length}개)`);
+        continue;
+      }
+      break;
     }
-    
-    const order = responseData?.data?.order;
-    
-    if (!order) {
-      return json({ error: "Order not found" }, { 
-        status: 404,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-        }
-      });
-    }
+
+    console.log(`Line items collected (전체): ${order.lineItems.edges.length}`);
 
     // 고객 정보 추출 함수
     const extractCustomerInfo = () => {
